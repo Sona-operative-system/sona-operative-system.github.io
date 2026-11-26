@@ -14,7 +14,8 @@
     adminNotificationEmail: 'j.helmeke97@gmail.com',
     lastOtpResult: null,
     tabCatalog: { rezeptur: [], einkauf: [], operations: [] },
-    openPillars: { WARENWIRTSCHAFT: false, CONTROLLING: false, OPERATIONS: false },
+    openPillars: { OPERATIONS: false, EVENTS: false, WARENWIRTSCHAFT: false, CONTROLLING: false, PERFORMANCE: false, ADMIN: false },
+    auditEntries: [],
     moduleFrames: {},
     sidebarCollapsed: false,
     deferredInstallPrompt: null
@@ -391,6 +392,7 @@
 
     if (s.permissions.adminMatrix) {
       navItems.push({ key: 'rbac', title: 'Rechte-Matrix', pillar: 'ADMIN' });
+      navItems.push({ key: 'audit_log', title: 'Aktivitätsprotokoll', pillar: 'ADMIN' });
     }
 
     const validNonNavView = STATE.activeView === 'mod_operations';
@@ -400,6 +402,7 @@
 
     const pillarGroups = [
       { id: 'OPERATIONS', label: 'Operations' },
+      { id: 'EVENTS', label: 'Events' },
       { id: 'WARENWIRTSCHAFT', label: 'Warenwirtschaft' },
       { id: 'CONTROLLING', label: 'Controlling' },
       { id: 'PERFORMANCE', label: 'Performance' }
@@ -411,7 +414,7 @@
       '</button>';
 
     const isOpsView = STATE.activeView === 'mod_operations' || STATE.activeView.indexOf('ops_') === 0;
-    navHtml += pillarGroups.map(group => {
+    const renderPillarGroupHtml = group => {
       const items = navItems.filter(it => it.pillar === group.id);
       if (!items.length) return '';
       const isOpen = !!STATE.openPillars[group.id] || items.some(it => it.key === STATE.activeView) || (group.id === 'OPERATIONS' && isOpsView);
@@ -433,14 +436,14 @@
           ).join('') +
         '</div>' +
       '</div>';
-    }).join('');
+    };
+
+    navHtml += pillarGroups.map(renderPillarGroupHtml).join('');
 
     if (s.permissions.adminMatrix) {
       navHtml +=
         '<div class="os-nav-divider"></div>' +
-        '<button type="button" class="os-nav-btn' + (STATE.activeView === 'rbac' ? ' active' : '') + '" data-view="rbac">' +
-          '<span>Rechte-Matrix</span>' +
-        '</button>';
+        renderPillarGroupHtml({ id: 'ADMIN', label: 'Admin' });
     }
 
     $('osNavList').innerHTML = navHtml;
@@ -499,7 +502,7 @@
   }
 
   function buildDirectEmbeddedUrl(mod, s) {
-    if (!mod || !mod.legacyUrl || mod.key === 'rezeptur') return '';
+    if (!mod || !mod.legacyUrl || mod.key === 'rezeptur' || mod.key === 'events') return '';
     const loc = encodeURIComponent(s.standortId || '001');
     const sep = mod.legacyUrl.indexOf('?') === -1 ? '?' : '&';
     let url = mod.legacyUrl + sep + 'standortId=' + loc + '&loc=' + loc + '&embedded=1';
@@ -523,9 +526,18 @@
       renderOverview();
       return;
     }
-    if (STATE.activeView === 'rbac' && s.permissions.adminMatrix) {
+    if ((STATE.activeView === 'rbac' || STATE.activeView === 'audit_log') && s.permissions.adminMatrix) {
+      const adminGrp = document.querySelector('#osNavList .os-nav-group[data-pillar="ADMIN"]');
+      if (adminGrp) {
+        adminGrp.classList.add('open');
+        STATE.openPillars.ADMIN = true;
+      }
       showMainContentPane();
-      renderRbacMatrixView();
+      if (STATE.activeView === 'audit_log') {
+        renderAuditLogView();
+      } else {
+        renderRbacMatrixView();
+      }
       return;
     }
     if (STATE.activeView.indexOf('ops_') === 0) {
@@ -680,6 +692,7 @@
 
     const pillars = [
       { id: 'OPERATIONS', title: 'Operations' },
+      { id: 'EVENTS', title: 'Events' },
       { id: 'WARENWIRTSCHAFT', title: 'Warenwirtschaft' },
       { id: 'CONTROLLING', title: 'Controlling' },
       { id: 'PERFORMANCE', title: 'Performance' }
@@ -758,9 +771,15 @@
     if (perms.adminMatrix) {
       searchItems.push({
         label: 'Rechte-Matrix & Mitarbeiter',
-        meta: 'Administration',
+        meta: 'Admin',
         keywords: 'rechte matrix mitarbeiter benutzer admin anfragen gmail passwort',
         run: () => window.SonaApp.openView('rbac')
+      });
+      searchItems.push({
+        label: 'Aktivitätsprotokoll (Audit-Log)',
+        meta: 'Admin',
+        keywords: 'protokoll audit log historie wer eingetragen aktivitaet verlauf email',
+        run: () => window.SonaApp.openView('audit_log')
       });
     }
 
@@ -1027,16 +1046,180 @@
             '<button type="button" class="btn btn-sm" id="btnReloadRbac">Aktualisieren</button>' +
           '</div>' +
         '</div>' +
-        '<p class="module-desc" style="margin-bottom:14px;">Steuere pro Mitarbeiter und Gmail-Konto die Hauptmodule (inkl. Operations), Standorte, Zugriffsstufe und über <b>Tabs ▾</b> die feingranularen Tab-Freigaben.</p>' +
+        '<p class="module-desc" style="margin-bottom:14px;">Steuere pro Mitarbeiter und Gmail-Konto die Hauptmodule (inkl. Operations &amp; Events), Standorte, Zugriffsstufe und über <b>Tabs ▾</b> die feingranularen Tab-Freigaben.</p>' +
         '<div class="table-wrap"><table id="rbacTable"><thead><tr>' +
-          '<th>Benutzer</th><th>Rolle</th><th>Einkauf</th><th>Rezepturen</th><th>Controlling</th><th>Bestand</th><th>Operations</th><th>Performance</th><th>Admin</th><th>Standorte</th><th>Stufe</th><th>Tab-Details</th><th>Aktion</th>' +
-        '</tr></thead><tbody id="rbacBody"><tr><td colspan="12">Lade Rechte-Matrix …</td></tr></tbody></table></div>' +
+          '<th>Benutzer</th><th>Rolle</th><th>Einkauf</th><th>Rezepturen</th><th>Controlling</th><th>Bestand</th><th>Operations</th><th>Events</th><th>Performance</th><th>Admin</th><th>Standorte</th><th>Stufe</th><th>Tab-Details</th><th>Aktion</th>' +
+        '</tr></thead><tbody id="rbacBody"><tr><td colspan="14">Lade Rechte-Matrix …</td></tr></tbody></table></div>' +
       '</div>';
 
     $('btnNewRbacUser').addEventListener('click', () => openUserProfileModal('create', null));
     $('btnReloadRbac').addEventListener('click', loadRbacTable);
     renderOtpResultBanner();
     await loadRbacTable();
+  }
+
+  function formatAuditTimestamp(isoStr) {
+    if (!isoStr) return '—';
+    try {
+      const d = new Date(isoStr);
+      if (isNaN(d.getTime())) return String(isoStr);
+      return d.toLocaleString('de-DE', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit'
+      });
+    } catch (e) {
+      return String(isoStr);
+    }
+  }
+
+  function getAuditModuleBadgeClass(modul) {
+    const m = String(modul || '').toUpperCase();
+    if (m === 'OPERATIONS') return 'badge-ok';
+    if (m === 'EVENTS') return 'badge-info';
+    if (m === 'ADMIN') return 'badge-warn';
+    if (m === 'AUTH') return 'badge-info';
+    return '';
+  }
+
+  function exportAuditLogCsv() {
+    const rows = STATE.auditEntries || [];
+    if (!rows.length) {
+      showToast('Keine Protokoll-Einträge für Export vorhanden.');
+      return;
+    }
+    const header = ['Log_ID', 'Zeitpunkt', 'Benutzer_ID', 'Name', 'Email', 'Standort', 'Modul', 'Aktion', 'Detail'];
+    const csvEscape = v => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"';
+    const lines = [header.join(';')].concat(rows.map(r => [
+      r.logId,
+      r.timestamp,
+      r.userId,
+      r.name,
+      r.email,
+      (r.standortName || r.standortId || ''),
+      r.modul,
+      r.aktion,
+      r.detail
+    ].map(csvEscape).join(';')));
+    const blob = new Blob(['\uFEFF' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'SONA_OS_Aktivitaetsprotokoll_' + new Date().toISOString().slice(0, 10) + '.csv';
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => {
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }, 100);
+    showToast('Aktivitätsprotokoll als CSV exportiert (' + rows.length + ' Einträge).');
+  }
+
+  async function renderAuditLogView() {
+    const container = $('osMainContent');
+    if (!container) return;
+
+    container.innerHTML =
+      '<div class="card">' +
+        '<div class="card-head">' +
+          '<div>' +
+            '<div class="kicker">Administration · Nachvollziehbarkeit</div>' +
+            '<h3>Aktivitätsprotokoll</h3>' +
+          '</div>' +
+          '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">' +
+            '<button type="button" class="btn btn-sm" id="btnExportAuditCsv">CSV Export</button>' +
+            '<button type="button" class="btn btn-primary btn-sm" id="btnReloadAuditLog">Aktualisieren</button>' +
+          '</div>' +
+        '</div>' +
+        '<p class="module-desc" style="margin-bottom:14px;">Zentrales Änderungs- &amp; Zugriffsprotokoll über alle Ebenen mit Name, E-Mail-Adresse, Standort und Zeitstempel.</p>' +
+        '<div class="audit-kpi-row" id="auditKpiRow">' +
+          '<div class="audit-kpi"><span class="kicker">Protokoll gesamt</span><strong id="auditKpiTotal">—</strong></div>' +
+          '<div class="audit-kpi"><span class="kicker">Heute erfasst</span><strong id="auditKpiToday">—</strong></div>' +
+          '<div class="audit-kpi"><span class="kicker">Aktive Nutzer</span><strong id="auditKpiUsers">—</strong></div>' +
+        '</div>' +
+        '<div class="audit-filter-bar">' +
+          '<select id="auditLocFilter" class="input-control" style="max-width:170px;">' +
+            '<option value="ALL">Alle Standorte</option>' +
+            '<option value="001">001 · Sona Karli</option>' +
+            '<option value="002">002 · Sona Prager</option>' +
+          '</select>' +
+          '<select id="auditModFilter" class="input-control" style="max-width:190px;">' +
+            '<option value="ALL">Alle Module</option>' +
+            '<option value="OPERATIONS">Operations</option>' +
+            '<option value="EVENTS">Events</option>' +
+            '<option value="WARENWIRTSCHAFT">Warenwirtschaft</option>' +
+            '<option value="CONTROLLING">Controlling</option>' +
+            '<option value="PERFORMANCE">Performance</option>' +
+            '<option value="ADMIN">Admin</option>' +
+            '<option value="AUTH">Anmeldung</option>' +
+          '</select>' +
+          '<input type="search" id="auditQueryInput" class="input-control" placeholder="Nach Name, E-Mail, Aktion oder Detail filtern …" style="flex:1;min-width:220px;">' +
+        '</div>' +
+        '<div class="table-wrap"><table id="auditTable"><thead><tr>' +
+          '<th>Zeitpunkt</th><th>Mitarbeiter &amp; E-Mail</th><th>Standort</th><th>Modul</th><th>Aktion</th><th>Detail</th>' +
+        '</tr></thead><tbody id="auditBody"><tr><td colspan="6">Lade Aktivitätsprotokoll …</td></tr></tbody></table></div>' +
+      '</div>';
+
+    $('btnReloadAuditLog').addEventListener('click', loadAuditLogTable);
+    $('btnExportAuditCsv').addEventListener('click', exportAuditLogCsv);
+    $('auditLocFilter').addEventListener('change', loadAuditLogTable);
+    $('auditModFilter').addEventListener('change', loadAuditLogTable);
+    let queryTimer = null;
+    $('auditQueryInput').addEventListener('input', () => {
+      if (queryTimer) clearTimeout(queryTimer);
+      queryTimer = setTimeout(loadAuditLogTable, 260);
+    });
+
+    await loadAuditLogTable();
+  }
+
+  async function loadAuditLogTable() {
+    const tbody = $('auditBody');
+    if (!tbody) return;
+    const filter = {
+      standortId: ($('auditLocFilter') && $('auditLocFilter').value) || 'ALL',
+      modul: ($('auditModFilter') && $('auditModFilter').value) || 'ALL',
+      query: ($('auditQueryInput') && $('auditQueryInput').value) || '',
+      limit: 250
+    };
+    window.SonaLoader.show(600);
+    try {
+      const res = await window.SonaApi.getAuditLog(filter);
+      if (!res || !res.success) {
+        tbody.innerHTML = '<tr><td colspan="6">' + esc((res && res.error) || 'Fehler beim Laden des Protokolls.') + '</td></tr>';
+        return;
+      }
+      STATE.auditEntries = res.entries || [];
+      if ($('auditKpiTotal')) $('auditKpiTotal').textContent = String(res.totalCount || 0);
+      if ($('auditKpiToday')) $('auditKpiToday').textContent = String(res.todayCount || 0);
+      if ($('auditKpiUsers')) $('auditKpiUsers').textContent = String(res.uniqueUsersCount || 0);
+
+      if (!STATE.auditEntries.length) {
+        tbody.innerHTML = '<tr><td colspan="6" style="color:var(--os-silk);padding:18px;">Keine Protokoll-Einträge für die gewählten Filter gefunden.</td></tr>';
+        return;
+      }
+
+      tbody.innerHTML = STATE.auditEntries.map(item =>
+        '<tr>' +
+          '<td style="white-space:nowrap;font-size:12px;color:var(--os-silk);">' + esc(formatAuditTimestamp(item.timestamp)) + '</td>' +
+          '<td>' +
+            '<b>' + esc(item.name || 'System') + '</b>' +
+            (item.email ? '<div class="rbac-user-email">' + esc(item.email) + '</div>' : '') +
+          '</td>' +
+          '<td style="white-space:nowrap;">' + esc(shortLocName(item.standortName || item.standortId)) + '</td>' +
+          '<td><span class="badge ' + getAuditModuleBadgeClass(item.modul) + '">' + esc(item.modul) + '</span></td>' +
+          '<td style="white-space:nowrap;font-family:var(--font-sans);font-size:11.5px;font-weight:600;color:var(--os-cream);">' + esc(item.aktion) + '</td>' +
+          '<td style="font-size:12px;color:var(--os-silk);max-width:420px;word-break:break-word;">' + esc(item.detail || '—') + '</td>' +
+        '</tr>'
+      ).join('');
+    } catch (err) {
+      tbody.innerHTML = '<tr><td colspan="6">Fehler: ' + esc(err && err.message ? err.message : String(err)) + '</td></tr>';
+    } finally {
+      window.SonaLoader.hide();
+    }
   }
 
   async function loadRbacTable() {
@@ -1087,6 +1270,7 @@
           '<td class="chk-cell"><input type="checkbox" class="rbac-mod" data-mod="controlling"' + (u.modules.controlling ? ' checked' : '') + '></td>' +
           '<td class="chk-cell"><input type="checkbox" class="rbac-mod" data-mod="bestand"' + (u.modules.bestand ? ' checked' : '') + '></td>' +
           '<td class="chk-cell"><input type="checkbox" class="rbac-mod" data-mod="operations"' + (u.modules.operations !== false ? ' checked' : '') + '></td>' +
+          '<td class="chk-cell"><input type="checkbox" class="rbac-mod" data-mod="events"' + (u.modules.events ? ' checked' : '') + '></td>' +
           '<td class="chk-cell"><input type="checkbox" class="rbac-mod" data-mod="performance"' + (u.modules.performance ? ' checked' : '') + '></td>' +
           '<td class="chk-cell"><input type="checkbox" class="rbac-admin"' + (u.adminMatrix ? ' checked' : '') + '></td>' +
           '<td><div class="loc-chks">' +
@@ -1107,7 +1291,7 @@
           '</div></td>' +
         '</tr>' +
         '<tr class="rbac-tabs-row hidden" data-tabs-for="' + idx + '">' +
-          '<td colspan="13">' +
+          '<td colspan="14">' +
             '<div class="rbac-tabs-grid">' +
               renderTabPermissionBox(idx, 'rezeptur', 'Rezepturen – Tab-Freigaben', STATE.tabCatalog.rezeptur || [], tp.rezeptur) +
               renderTabPermissionBox(idx, 'einkauf', 'Einkauf – Tab-Freigaben', STATE.tabCatalog.einkauf || [], tp.einkauf) +
@@ -1277,7 +1461,7 @@
       permsWrap.classList.remove('hidden');
       const reqLocNorm = String(entry.requestedLocation || '001').trim().padStart(3, '0');
       populateModalPermissions(
-        { einkauf: false, rezeptur: true, controlling: false, bestand: false, operations: true, adminMatrix: false },
+        { einkauf: false, rezeptur: true, controlling: false, bestand: false, operations: true, events: false, performance: false, adminMatrix: false },
         [reqLocNorm === '000' ? '001' : reqLocNorm],
         'READ'
       );
@@ -1306,7 +1490,7 @@
       genOtpLbl.textContent = 'Einmal-Passwort automatisch generieren (bei Neuanlage aktiv)';
       permsWrap.classList.remove('hidden');
       populateModalPermissions(
-        { einkauf: false, rezeptur: true, controlling: false, bestand: false, operations: true, adminMatrix: false },
+        { einkauf: false, rezeptur: true, controlling: false, bestand: false, operations: true, events: false, performance: false, adminMatrix: false },
         ['001'],
         'READ'
       );

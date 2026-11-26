@@ -139,6 +139,7 @@
     saveRbacRule: (rule) => callPost('os_rbac_save', { rule: rule }),
     saveUser: (user) => callPost('os_user_save', { user: user }),
     deleteUser: (userId) => callPost('os_user_delete', { userId: userId }),
+    getAuditLog: (filter) => callPost('os_audit_log', { filter: filter || {} }),
     getBestandDashboard: (standortId, filter, forceRefresh) => callPost('os_bestand_dashboard', {
       standortId: standortId,
       filter: filter || {},

@@ -1823,3 +1823,41 @@ textarea.ops-textarea {
     grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 }
+
+/* ============================================================================
+   Admin Aktivitätsprotokoll (Audit-Log)
+   ============================================================================ */
+.audit-kpi-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.audit-kpi {
+  background: var(--os-black);
+  border: 1px solid var(--os-line);
+  border-radius: var(--os-radius);
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.audit-kpi strong {
+  font-family: var(--font-serif);
+  font-size: 24px;
+  font-weight: 500;
+  color: var(--os-cream);
+  line-height: 1.1;
+}
+.audit-filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 14px;
+}
+@media (max-width: 720px) {
+  .audit-kpi-row {
+    grid-template-columns: 1fr;
+  }
+}
