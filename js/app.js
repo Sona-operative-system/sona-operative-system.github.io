@@ -940,6 +940,7 @@
     const bruchUrl = (opsMod && opsMod.bruchUrl) ? buildQuickOpsUrl(opsMod.bruchUrl, s) : '';
     const canSchwund = !!(schwundUrl && (opTabs === 'ALL' || (Array.isArray(opTabs) && opTabs.indexOf('schwund_eingabe') !== -1)));
     const canBruch = !!(bruchUrl && (opTabs === 'ALL' || (Array.isArray(opTabs) && opTabs.indexOf('bruch_eingabe') !== -1)));
+    const canReklamation = !!(opsMod && (opTabs === 'ALL' || (Array.isArray(opTabs) && opTabs.indexOf('reklamation') !== -1)));
     const canPutzplan = !!(opsMod && (opTabs === 'ALL' || (Array.isArray(opTabs) && opTabs.indexOf('putzplan') !== -1)));
     const canTodo = !!(opsMod && (opTabs === 'ALL' || (Array.isArray(opTabs) && opTabs.indexOf('todo') !== -1)));
     const lvl = String(perms.accessLevel || '').toUpperCase();
@@ -957,6 +958,11 @@
         ? '<button type="button" class="btn btn-sm home-quick-ops-btn home-quick-kpi-btn" data-quick-url="' + esc(bruchUrl) + '" title="Bruch im neuen Tab erfassen">' +
             '<span class="home-quick-kpi-label">+ Bruch</span>' +
             '<span id="homeQuickBruchVal" class="home-quick-kpi-val tabular"></span>' +
+          '</button>'
+        : '') +
+      (canReklamation
+        ? '<button type="button" class="btn btn-sm home-quick-view-btn home-quick-kpi-btn" data-quick-view="ops_reklamation" title="Reklamation oder Beschwerde erfassen">' +
+            '<span class="home-quick-kpi-label">+ Reklamation</span>' +
           '</button>'
         : '');
 
@@ -1591,7 +1597,7 @@
     let activeTab = initialTab === 'support' ? 'support' : 'hilfe';
     let selectedEbene = 'Alle';
     let helpEntries = [];
-    let isAdmin = !!(STATE.session && STATE.session.permissions && STATE.session.permissions.adminMatrix);
+    let isAdmin = hasAdminTab(STATE.session, 'hilfe_editor');
     let backendPending = false;
 
     const renderShell = () => {

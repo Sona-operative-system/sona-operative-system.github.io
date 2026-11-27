@@ -2418,7 +2418,7 @@ textarea.ops-textarea {
   }
   .home-quick-toolbar {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
     gap: 8px;
     width: 100%;
   }
