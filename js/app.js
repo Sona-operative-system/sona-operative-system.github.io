@@ -3212,18 +3212,74 @@
     window.addEventListener('offline', () => showToast('Offline – Verbindung zum SONA Gateway unterbrochen.'));
     window.addEventListener('online', () => showToast('Verbindung wiederhergestellt.'));
 
+    let updatePopupShown = false;
+    const showUpdateAvailablePopup = newLabel => {
+      if (updatePopupShown || document.getElementById('sonaUpdatePopup')) return;
+      updatePopupShown = true;
+      const card = document.createElement('div');
+      card.id = 'sonaUpdatePopup';
+      card.className = 'update-popup-card';
+      card.setAttribute('role', 'alertdialog');
+      card.setAttribute('aria-live', 'polite');
+      card.innerHTML =
+        '<div class="kicker" style="margin-bottom:4px;">SONA OS · System-Update' + (newLabel ? ' (' + esc(newLabel) + ')' : '') + '</div>' +
+        '<h4 class="update-popup-title">Neues Update verfügbar</h4>' +
+        '<p class="update-popup-text">Eine neue Version ist bereit. Bitte lade die Seite kurz neu, damit alle aktuellen Funktionen &amp; Verbesserungen aktiv sind.</p>' +
+        '<div class="update-popup-actions">' +
+          '<button type="button" id="btnDismissUpdatePopup" class="btn btn-sm">Später</button>' +
+          '<button type="button" id="btnReloadForUpdate" class="btn btn-primary btn-sm">Seite neu laden ↻</button>' +
+        '</div>';
+      document.body.appendChild(card);
+
+      $('btnDismissUpdatePopup').addEventListener('click', () => {
+        card.remove();
+      });
+      $('btnReloadForUpdate').addEventListener('click', async () => {
+        const btn = $('btnReloadForUpdate');
+        if (btn) { btn.disabled = true; btn.textContent = 'Lädt neu…'; }
+        try {
+          if ('caches' in window) {
+            const keys = await caches.keys();
+            await Promise.all(keys.map(k => caches.delete(k)));
+          }
+        } catch (e) {}
+        window.location.reload();
+      });
+    };
+
+    let lastVersionCheckMs = 0;
+    const checkForAppUpdate = async () => {
+      const now = Date.now();
+      if (now - lastVersionCheckMs < 45000) return;
+      lastVersionCheckMs = now;
+      try {
+        const res = await fetch('./version.json?t=' + now, { cache: 'no-store' });
+        if (!res || !res.ok) return;
+        const data = await res.json();
+        const remoteVer = Number(data && data.version) || 0;
+        const localVer = Number(window.SONA_OS_DEFAULTS && window.SONA_OS_DEFAULTS.APP_BUILD_VERSION) || 0;
+        if (remoteVer > localVer) {
+          showUpdateAvailablePopup(data && data.label ? String(data.label) : ('v' + remoteVer));
+        }
+      } catch (e) {}
+    };
+
     if ('serviceWorker' in navigator) {
-      let swRefreshing = false;
       const hadController = !!navigator.serviceWorker.controller;
       navigator.serviceWorker.addEventListener('controllerchange', () => {
-        if (!hadController || swRefreshing) return;
-        swRefreshing = true;
-        window.location.reload();
+        if (!hadController) return;
+        showUpdateAvailablePopup('');
       });
       navigator.serviceWorker.register('./sw.js').then(reg => {
         try { reg.update(); } catch (e) {}
       }).catch(() => {});
     }
+
+    setInterval(checkForAppUpdate, 180000);
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') checkForAppUpdate();
+    });
+    window.addEventListener('online', checkForAppUpdate);
 
     const existingToken = window.SonaApi.getToken();
     if (!existingToken) {

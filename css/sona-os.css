@@ -2802,3 +2802,50 @@ textarea.ops-textarea {
   justify-content: space-between;
   gap: 8px;
 }
+
+/* ============================================================================
+   v41: Live-Update-Popup ("Neues Update verfügbar")
+   ============================================================================ */
+.update-popup-card {
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  z-index: 1300;
+  width: min(370px, calc(100vw - 28px));
+  background: linear-gradient(135deg, rgba(245, 236, 215, 0.1), #101010 55%);
+  border: 1px solid rgba(245, 236, 215, 0.42);
+  border-radius: 14px;
+  padding: 16px 18px;
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.85);
+  animation: tourFadeIn 0.22s ease;
+}
+
+.update-popup-title {
+  font-family: var(--font-serif);
+  font-size: 19px;
+  color: var(--os-cream);
+  margin: 0 0 4px;
+}
+
+.update-popup-text {
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: rgba(245, 236, 215, 0.85);
+  margin: 0 0 12px;
+}
+
+.update-popup-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+@media (max-width: 720px) {
+  .update-popup-card {
+    left: 14px;
+    right: 14px;
+    bottom: calc(68px + env(safe-area-inset-bottom, 0px));
+    width: auto;
+  }
+}

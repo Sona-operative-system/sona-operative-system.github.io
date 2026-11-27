@@ -1,20 +1,20 @@
 'use strict';
 
-const SONA_OS_SHELL_CACHE = 'sona-os-shell-v40';
+const SONA_OS_SHELL_CACHE = 'sona-os-shell-v41';
 const SONA_OS_SHELL_ASSETS = [
   './',
   './index.html',
   './manifest.webmanifest',
-  './css/sona-os.css?v=40',
-  './js/config.js?v=40',
-  './js/loader.js?v=40',
-  './js/api.js?v=40',
-  './js/bestand.js?v=40',
-  './js/controlling.js?v=40',
-  './js/einkauf.js?v=40',
-  './js/rezeptur.js?v=40',
-  './js/operations.js?v=40',
-  './js/app.js?v=40',
+  './css/sona-os.css?v=41',
+  './js/config.js?v=41',
+  './js/loader.js?v=41',
+  './js/api.js?v=41',
+  './js/bestand.js?v=41',
+  './js/controlling.js?v=41',
+  './js/einkauf.js?v=41',
+  './js/rezeptur.js?v=41',
+  './js/operations.js?v=41',
+  './js/app.js?v=41',
   './assets/sona-logo.jpg',
   './assets/sona-logo-transparent.png',
   './assets/icon-192.png',
@@ -58,11 +58,12 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Strictly bypass cache for Apps Script / API calls
+  // Strictly bypass cache for Apps Script / API calls & version.json update checks
   if (
     url.hostname.includes('script.google.com') ||
     url.hostname.includes('googleusercontent.com') ||
-    url.search.includes('action=')
+    url.search.includes('action=') ||
+    url.pathname.endsWith('/version.json')
   ) {
     return;
   }
