@@ -2671,7 +2671,7 @@
 
     const btnSave = document.getElementById('btnSaveOpsFb');
     if (btnSave) {
-      btnSave.addEventListener('click', async function() {
+      btnSave.addEventListener('click', function() {
         const msgEl = document.getElementById('opsFbMsg');
         const thema = (document.getElementById('opsFbThema') && document.getElementById('opsFbThema').value) || 'Allgemein';
         const titel = (document.getElementById('opsFbTitel') && document.getElementById('opsFbTitel').value || '').trim();
@@ -2683,12 +2683,9 @@
           if (msgEl) { msgEl.style.color = '#f87171'; msgEl.textContent = 'Bitte Titel oder Feedback-Text eingeben.'; }
           return;
         }
-        btnSave.disabled = true;
-        btnSave.textContent = 'Speichert…';
         if (msgEl) msgEl.textContent = '';
 
-        try {
-          const fbKey = 'feedback::' + session.standortId;
+        const fbKey = 'feedback::' + session.standortId;
           const payload = { thema: thema, titel: titel, inhalt: inhalt };
           if (isAdmin) {
             if (durVal === 'DAUERHAFT') payload.dauerhaft = true;
