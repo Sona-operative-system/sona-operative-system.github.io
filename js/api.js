@@ -9,7 +9,6 @@
     os_session_check: true,
     os_rbac_list: true,
     os_audit_log: true,
-    os_module_launch: true,
     os_bestand_dashboard: true,
     os_bestand_detail: true,
     os_controlling_meta: true,

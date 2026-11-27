@@ -556,18 +556,14 @@
     const s = STATE.session;
     const hostEl = $('osModuleFrameHost');
     if (!s || !mod || !hostEl || mod.key === 'operations') return;
+    // Module mit Einmal-SSO-Nonce (rezeptur, events) niemals im Hintergrund vorladen/cachen
+    const launchUrl = buildDirectEmbeddedUrl(mod, s);
+    if (!launchUrl) return;
     const frameKey = String(s.standortId || '001') + ':' + String(mod.key);
     if (STATE.moduleFrames[frameKey] || PRELOAD_STATE.inFlight[frameKey]) return;
 
     PRELOAD_STATE.inFlight[frameKey] = true;
     try {
-      let launchUrl = buildDirectEmbeddedUrl(mod, s) || PRELOAD_STATE.urls[frameKey] || '';
-      if (!launchUrl) {
-        const res = await window.SonaApi.getModuleLaunchUrl(mod.key, s.standortId);
-        if (!res || !res.success || !res.launchUrl) return;
-        launchUrl = res.launchUrl;
-        PRELOAD_STATE.urls[frameKey] = launchUrl;
-      }
       if (!STATE.session || STATE.session.standortId !== s.standortId) return;
       if (STATE.moduleFrames[frameKey]) return;
 
@@ -629,7 +625,7 @@
       }, 350));
     }
 
-    const iframeMods = mods.filter(m => m.key !== 'operations');
+    const iframeMods = mods.filter(m => m.key !== 'operations' && !!buildDirectEmbeddedUrl(m, session));
     iframeMods.forEach((mod, idx) => {
       PRELOAD_STATE.timers.push(setTimeout(() => {
         if (!STATE.session || STATE.session.standortId !== session.standortId) return;
@@ -754,7 +750,7 @@
     window.SonaLoader.show(250);
 
     try {
-      let launchUrl = buildDirectEmbeddedUrl(mod, s) || PRELOAD_STATE.urls[frameKey] || '';
+      let launchUrl = buildDirectEmbeddedUrl(mod, s);
       if (!launchUrl) {
         const res = await window.SonaApi.getModuleLaunchUrl(mod.key, s.standortId);
         if (STATE.activeView !== 'mod_' + mod.key) {
@@ -772,7 +768,6 @@
           return;
         }
         launchUrl = res.launchUrl;
-        PRELOAD_STATE.urls[frameKey] = launchUrl;
       }
 
       if (STATE.activeView !== 'mod_' + mod.key) {
