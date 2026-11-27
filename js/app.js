@@ -1554,6 +1554,31 @@
     '</div>';
   }
 
+  function syncModuleTabBox(tabsRoot, modKey, enabled, defaultAllOnEnable) {
+    if (!tabsRoot) return;
+    const box = tabsRoot.querySelector('.rbac-tabs-box[data-tabmod="' + modKey + '"]');
+    if (!box) return;
+    const allChk = box.querySelector('.rbac-tab-all');
+    const chips = box.querySelector('.rbac-tab-chips');
+    const items = box.querySelectorAll('.rbac-tab-item');
+    if (!enabled) {
+      box.classList.add('hidden');
+      if (allChk) allChk.checked = false;
+      if (chips) chips.classList.remove('disabled');
+      items.forEach(c => { c.checked = false; });
+      return;
+    }
+    box.classList.remove('hidden');
+    if (defaultAllOnEnable) {
+      const hasAny = (allChk && allChk.checked) || Array.from(items).some(c => c.checked);
+      if (!hasAny) {
+        if (allChk) allChk.checked = true;
+        if (chips) chips.classList.add('disabled');
+        items.forEach(c => { c.checked = true; });
+      }
+    }
+  }
+
   function wireTabBoxToggleEvents(rootEl) {
     if (!rootEl) return;
     rootEl.querySelectorAll('.rbac-tab-all').forEach(chk => {
@@ -1561,6 +1586,9 @@
         const box = chk.closest('.rbac-tabs-box');
         const chips = box && box.querySelector('.rbac-tab-chips');
         if (chips) chips.classList.toggle('disabled', chk.checked);
+        if (chk.checked && box) {
+          box.querySelectorAll('.rbac-tab-item').forEach(c => { c.checked = true; });
+        }
       });
     });
   }
@@ -2662,6 +2690,27 @@
 
       wireTabBoxToggleEvents(tbody);
 
+      tbody.querySelectorAll('tr.rbac-main-row').forEach(tr => {
+        const idx = tr.dataset.idx;
+        const detailRow = tbody.querySelector('tr.rbac-tabs-row[data-tabs-for="' + idx + '"]');
+        if (!detailRow) return;
+        ['rezeptur', 'einkauf', 'operations', 'performance'].forEach(modKey => {
+          const chk = tr.querySelector('.rbac-mod[data-mod="' + modKey + '"]');
+          if (!chk) return;
+          syncModuleTabBox(detailRow, modKey, chk.checked, false);
+          chk.addEventListener('change', () => {
+            syncModuleTabBox(detailRow, modKey, chk.checked, true);
+          });
+        });
+        const admChk = tr.querySelector('.rbac-admin');
+        if (admChk) {
+          syncModuleTabBox(detailRow, 'admin', admChk.checked, false);
+          admChk.addEventListener('change', () => {
+            syncModuleTabBox(detailRow, 'admin', admChk.checked, true);
+          });
+        }
+      });
+
       tbody.querySelectorAll('.rbac-edit-user-btn').forEach(btn => {
         btn.addEventListener('click', () => {
           const entry = STATE.rbacEntries[parseInt(btn.dataset.idx, 10)];
@@ -2881,12 +2930,22 @@
 
     const tabsBox = $('userModalInitTabs');
     tabsBox.innerHTML =
-      renderTabPermissionBox('init', 'rezeptur', 'Rezepturen – Tab-Freigaben', STATE.tabCatalog.rezeptur || [], 'ALL') +
-      renderTabPermissionBox('init', 'einkauf', 'Einkauf – Tab-Freigaben', STATE.tabCatalog.einkauf || [], 'ALL') +
-      renderTabPermissionBox('init', 'operations', 'Operations – Tab-Freigaben', STATE.tabCatalog.operations || [], 'ALL') +
-      renderTabPermissionBox('init', 'performance', 'Performance – Tab-Freigaben', STATE.tabCatalog.performance || [], 'ALL') +
-      renderTabPermissionBox('init', 'admin', 'Admin – Unterebenen', STATE.tabCatalog.admin || [], 'ALL');
+      renderTabPermissionBox('init', 'rezeptur', 'Rezepturen – Tab-Freigaben', STATE.tabCatalog.rezeptur || [], mods.rezeptur ? 'ALL' : []) +
+      renderTabPermissionBox('init', 'einkauf', 'Einkauf – Tab-Freigaben', STATE.tabCatalog.einkauf || [], mods.einkauf ? 'ALL' : []) +
+      renderTabPermissionBox('init', 'operations', 'Operations – Tab-Freigaben', STATE.tabCatalog.operations || [], mods.operations ? 'ALL' : []) +
+      renderTabPermissionBox('init', 'performance', 'Performance – Tab-Freigaben', STATE.tabCatalog.performance || [], mods.performance ? 'ALL' : []) +
+      renderTabPermissionBox('init', 'admin', 'Admin – Unterebenen', STATE.tabCatalog.admin || [], mods.adminMatrix ? 'ALL' : []);
     wireTabBoxToggleEvents(tabsBox);
+
+    ['rezeptur', 'einkauf', 'operations', 'performance', 'adminMatrix'].forEach(modAttr => {
+      const tabModKey = modAttr === 'adminMatrix' ? 'admin' : modAttr;
+      const chk = wrap.querySelector('.user-init-mod[data-mod="' + modAttr + '"]');
+      if (!chk) return;
+      syncModuleTabBox(tabsBox, tabModKey, chk.checked, false);
+      chk.onchange = () => {
+        syncModuleTabBox(tabsBox, tabModKey, chk.checked, true);
+      };
+    });
   }
 
   async function submitUserProfileModal() {
