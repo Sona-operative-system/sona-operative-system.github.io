@@ -1,20 +1,20 @@
 'use strict';
 
-const SONA_OS_SHELL_CACHE = 'sona-os-shell-v30';
+const SONA_OS_SHELL_CACHE = 'sona-os-shell-v31';
 const SONA_OS_SHELL_ASSETS = [
   './',
   './index.html',
   './manifest.webmanifest',
-  './css/sona-os.css',
-  './js/config.js',
-  './js/loader.js',
-  './js/api.js',
-  './js/bestand.js',
-  './js/controlling.js',
-  './js/einkauf.js',
-  './js/rezeptur.js',
-  './js/operations.js',
-  './js/app.js',
+  './css/sona-os.css?v=31',
+  './js/config.js?v=31',
+  './js/loader.js?v=31',
+  './js/api.js?v=31',
+  './js/bestand.js?v=31',
+  './js/controlling.js?v=31',
+  './js/einkauf.js?v=31',
+  './js/rezeptur.js?v=31',
+  './js/operations.js?v=31',
+  './js/app.js?v=31',
   './assets/sona-logo.jpg',
   './assets/sona-logo-transparent.png',
   './assets/icon-192.png',
@@ -23,7 +23,13 @@ const SONA_OS_SHELL_ASSETS = [
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(SONA_OS_SHELL_CACHE).then((cache) => cache.addAll(SONA_OS_SHELL_ASSETS))
+    caches.open(SONA_OS_SHELL_CACHE).then((cache) =>
+      Promise.all(
+        SONA_OS_SHELL_ASSETS.map((assetUrl) =>
+          cache.add(new Request(assetUrl, { cache: 'reload' }))
+        )
+      )
+    )
   );
   self.skipWaiting();
 });
