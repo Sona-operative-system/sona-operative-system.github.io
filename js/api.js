@@ -21,7 +21,8 @@
     os_ops_monthly_summary: true,
     os_ops_rating_meta: true,
     os_ops_todo_day: true,
-    os_ops_putzplan_day: true
+    os_ops_putzplan_day: true,
+    os_ops_news_list: true
   };
 
   function setUnauthorizedHandler(fn) {
@@ -314,6 +315,17 @@
       date: dateIso || '',
       person: person,
       remark: remark
+    }),
+    getOpsNewsList: (standortId) => callPost('os_ops_news_list', {
+      standortId: standortId
+    }),
+    saveOpsNews: (standortId, entry) => callPost('os_ops_news_save', {
+      standortId: standortId,
+      entry: entry || {}
+    }),
+    deleteOpsNews: (standortId, newsId) => callPost('os_ops_news_delete', {
+      standortId: standortId,
+      newsId: newsId
     }),
     getModuleLaunchUrl: (moduleKey, standortId) => callPost('os_module_launch', {
       moduleKey: moduleKey,

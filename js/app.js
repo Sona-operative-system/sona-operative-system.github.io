@@ -430,6 +430,9 @@
 
     const opsNavItems = [];
     if (opsMod) {
+      if (hasOpTab('tagesuebersicht')) {
+        opsNavItems.push({ key: 'ops_tagesuebersicht', title: 'Tagesübersicht', pillar: 'OPERATIONS' });
+      }
       if (hasOpTab('schwund_eingabe') && opsMod.schwundUrl) {
         opsNavItems.push({ key: 'ops_schwund', title: 'Schwund', pillar: 'OPERATIONS', externalUrl: buildQuickOpsUrl(opsMod.schwundUrl, s) });
       }
@@ -616,12 +619,14 @@
     PRELOAD_STATE.warmedKey = warmKey;
 
     const mods = session.ecosystemModules || [];
-    const hasOps = mods.some(m => m.key === 'operations');
-    if (hasOps && window.SonaOperationsModule && window.SonaOperationsModule.prefetch) {
+    if (window.SonaOperationsModule && window.SonaOperationsModule.prefetch) {
       PRELOAD_STATE.timers.push(setTimeout(() => {
         if (!STATE.session || STATE.session.standortId !== session.standortId) return;
-        window.SonaOperationsModule.prefetch(STATE.session, 'ops_todo');
-        window.SonaOperationsModule.prefetch(STATE.session, 'ops_putzplan');
+        window.SonaOperationsModule.prefetch(STATE.session, 'ops_tagesuebersicht');
+        if (mods.some(m => m.key === 'operations')) {
+          window.SonaOperationsModule.prefetch(STATE.session, 'ops_todo');
+          window.SonaOperationsModule.prefetch(STATE.session, 'ops_putzplan');
+        }
       }, 350));
     }
 
@@ -829,39 +834,52 @@
     const canBruch = !!(bruchUrl && (opTabs === 'ALL' || (Array.isArray(opTabs) && opTabs.indexOf('bruch_eingabe') !== -1)));
     const canPutzplan = !!(opsMod && (opTabs === 'ALL' || (Array.isArray(opTabs) && opTabs.indexOf('putzplan') !== -1)));
     const canTodo = !!(opsMod && (opTabs === 'ALL' || (Array.isArray(opTabs) && opTabs.indexOf('todo') !== -1)));
-
-    const renderTile = m =>
-      '<button type="button" class="home-tile" onclick="window.SonaApp.openView(\'mod_' + esc(m.key) + '\')">' +
-        '<div class="home-tile-head">' +
-          '<h4 class="home-tile-title">' + esc(m.title) + '</h4>' +
-          '<span class="home-tile-arrow">→</span>' +
-        '</div>' +
-        '<p class="home-tile-desc">' + esc(m.subtitle) + '</p>' +
-      '</button>';
-
-    const pillars = [
-      { id: 'OPERATIONS', title: 'Operations' },
-      { id: 'EVENTS', title: 'Events' },
-      { id: 'WARENWIRTSCHAFT', title: 'Warenwirtschaft' },
-      { id: 'CONTROLLING', title: 'Controlling' },
-      { id: 'PERFORMANCE', title: 'Performance' }
-    ];
-
-    const pillarsHtml = pillars.map(p => {
-      const pMods = mods.filter(m => (m.pillar || 'WARENWIRTSCHAFT') === p.id);
-      if (!pMods.length) return '';
-      const gridCls = pMods.length >= 3 ? 'grid-3' : 'grid-2';
-      return '<section class="pillar-section">' +
-        '<div class="pillar-head"><h3>' + esc(p.title) + '</h3></div>' +
-        '<div class="' + gridCls + '">' + pMods.map(renderTile).join('') + '</div>' +
-      '</section>';
-    }).join('');
+    const lvl = String(perms.accessLevel || '').toUpperCase();
+    const role = String((s.user && s.user.role) || '').toUpperCase();
+    const canManageNews = !!(opsMod && (lvl === 'ADMIN' || lvl === 'WRITE' || perms.adminMatrix || ['ADMIN', 'FB_MANAGER', 'SERVICELEITUNG', 'SERVICECHEF', 'KUECHENCHEF', 'BARCHEF'].indexOf(role) !== -1));
 
     const quickOpsHtml =
       (canSchwund ? '<button type="button" class="btn btn-sm home-quick-ops-btn" data-quick-url="' + esc(schwundUrl) + '" title="Schwund im neuen Tab erfassen">+ Schwund</button>' : '') +
-      (canBruch ? '<button type="button" class="btn btn-sm home-quick-ops-btn" data-quick-url="' + esc(bruchUrl) + '" title="Bruch im neuen Tab erfassen">+ Bruch</button>' : '') +
-      (canPutzplan ? '<button type="button" class="btn btn-sm home-quick-view-btn" data-quick-view="ops_putzplan" title="Putzplan öffnen">Putzplan</button>' : '') +
-      (canTodo ? '<button type="button" class="btn btn-sm home-quick-view-btn" data-quick-view="ops_todo" title="To-Do-Checkliste öffnen">Checkliste</button>' : '');
+      (canBruch ? '<button type="button" class="btn btn-sm home-quick-ops-btn" data-quick-url="' + esc(bruchUrl) + '" title="Bruch im neuen Tab erfassen">+ Bruch</button>' : '');
+
+    const routineLinksHtml =
+      (canPutzplan
+        ? '<button type="button" class="home-routine-link home-quick-view-btn" data-quick-view="ops_putzplan">' +
+            '<div><div class="home-routine-link-title">Putzplan</div><div class="home-routine-link-sub">Tägliche &amp; wöchentliche Reinigung abhaken</div></div>' +
+            '<span>→</span>' +
+          '</button>'
+        : '') +
+      (canTodo
+        ? '<button type="button" class="home-routine-link home-quick-view-btn" data-quick-view="ops_todo">' +
+            '<div><div class="home-routine-link-title">To-Do-Liste</div><div class="home-routine-link-sub">Checkliste für Früh- &amp; Spätschicht</div></div>' +
+            '<span>→</span>' +
+          '</button>'
+        : '');
+
+    const routineSectionHtml =
+      '<section class="home-routine-card">' +
+        '<div class="card-head" style="margin-bottom:4px;">' +
+          '<div>' +
+            '<div class="kicker">1. Tägliche Basis · ' + esc(s.standortName) + '</div>' +
+            '<h3>Routineaufgaben</h3>' +
+          '</div>' +
+        '</div>' +
+        '<p class="module-desc" style="margin:0;">Bitte zu Schichtbeginn und Schichtende prüfen und direkt abhaken.</p>' +
+        (routineLinksHtml
+          ? '<div class="home-routine-links">' + routineLinksHtml + '</div>'
+          : '<p class="module-desc" style="margin-top:8px;">Für deinen Benutzer sind aktuell keine Routine-Links freigegeben.</p>') +
+      '</section>';
+
+    const newsSectionHtml =
+      '<section class="pillar-section">' +
+        '<div class="pillar-head" style="align-items:center;">' +
+          '<div><div class="kicker">2. Team-Briefing &amp; Dokumente</div><h3>Was gibt\'s Neues?</h3></div>' +
+          (canManageNews
+            ? '<button type="button" class="btn btn-sm home-quick-view-btn" data-quick-view="ops_tagesuebersicht">+ Info / Dokument eintragen</button>'
+            : '') +
+        '</div>' +
+        '<div id="homeNewsBoardSlot"></div>' +
+      '</section>';
 
     container.innerHTML =
       '<div class="os-home-greeting">' +
@@ -874,7 +892,14 @@
           quickOpsHtml +
         '</div>' +
       '</div>' +
-      (pillarsHtml || '<div class="card"><p>Für deinen Benutzer sind aktuell noch keine Bereiche freigegeben.</p></div>');
+      '<div class="home-info-stack">' +
+        routineSectionHtml +
+        newsSectionHtml +
+      '</div>';
+
+    if (window.SonaOperationsModule && window.SonaOperationsModule.renderNewsBoardInto) {
+      window.SonaOperationsModule.renderNewsBoardInto($('homeNewsBoardSlot'), s, false);
+    }
 
     container.querySelectorAll('.home-quick-ops-btn').forEach(btn => {
       btn.addEventListener('click', () => {

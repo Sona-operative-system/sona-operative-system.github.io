@@ -60,7 +60,7 @@
       return;
     }
     const sid = String(standortId);
-    ['summary::', 'reklam::', 'rating::', 'todo::', 'putz::'].forEach(function(p) {
+    ['summary::', 'reklam::', 'rating::', 'todo::', 'putz::', 'news::'].forEach(function(p) {
       invalidateOpsCache(p + sid);
     });
   }
@@ -1548,6 +1548,406 @@
     }
   }
 
+  // ============================================================================
+  // TAGESÜBERSICHT & WAS GIBT'S NEUES? (Tages-/Wochen-/Monatsinfos + Dokumente)
+  // ============================================================================
+  function newsTypeLabel(typ) {
+    const t = String(typ || 'TAG').toUpperCase();
+    if (t === 'WOCHE') return { label: 'Wocheninfo', cls: 'news-badge-woche' };
+    if (t === 'MONAT') return { label: 'Monatsinfo', cls: 'news-badge-monat' };
+    if (t === 'DAUERHAFT') return { label: 'Wichtig / Dauerhaft', cls: 'news-badge-dauerhaft' };
+    return { label: 'Tagesinfo', cls: 'news-badge-tag' };
+  }
+
+  function formatIsoShortDe(isoStr) {
+    const s = String(isoStr || '').trim();
+    const m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!m) return s;
+    return m[3] + '.' + m[2] + '.' + m[1];
+  }
+
+  function addDaysToIso(baseIso, days) {
+    const d = new Date((baseIso || todayIsoLocal()) + 'T12:00:00Z');
+    d.setUTCDate(d.getUTCDate() + (days || 0));
+    return d.toISOString().slice(0, 10);
+  }
+
+  function renderNewsCardsHtml(entries) {
+    if (!entries || !entries.length) {
+      return '<div class="card"><p class="module-desc" style="margin:0;">Aktuell liegen keine neuen Meldungen oder Dokumente für diesen Standort vor.</p></div>';
+    }
+    return '<div class="home-news-grid">' +
+      entries.map(function(item) {
+        const meta = newsTypeLabel(item.typ);
+        const rangeTxt = item.typ === 'DAUERHAFT'
+          ? 'Dauerhaft aktiv'
+          : ('Gültig bis ' + formatIsoShortDe(item.gueltigBis || item.gueltigAb));
+        const docHtml = item.docUrl
+          ? '<a class="news-doc-link" href="' + esc(item.docUrl) + '" target="_blank" rel="noopener noreferrer">📄 ' + esc(item.docName || 'Dokument öffnen') + ' ↗</a>'
+          : '';
+        return '<article class="home-news-card' + (item.pinned ? ' is-pinned' : '') + '">' +
+          '<div>' +
+            '<div class="home-news-meta">' +
+              '<span class="badge ' + meta.cls + '">' + esc(meta.label) + '</span>' +
+              (item.bereich && item.bereich !== 'ALLE' ? '<span class="badge">' + esc(item.bereich) + '</span>' : '') +
+              (item.pinned ? '<span class="badge badge-warn">Angeheftet</span>' : '') +
+            '</div>' +
+            '<h4 class="home-news-title">' + esc(item.titel) + '</h4>' +
+            (item.inhalt ? '<div class="home-news-body">' + esc(item.inhalt) + '</div>' : '') +
+          '</div>' +
+          '<div class="home-news-footer">' +
+            '<span>' + esc(item.autor || 'Leitung') + ' · ' + esc(rangeTxt) + '</span>' +
+            docHtml +
+          '</div>' +
+        '</article>';
+      }).join('') +
+    '</div>';
+  }
+
+  async function renderNewsBoardInto(targetEl, session, forceRefresh) {
+    if (!targetEl || !session || !session.standortId) return;
+    const cacheKey = 'news::' + session.standortId;
+    if (forceRefresh || !getOpsCache(cacheKey)) {
+      targetEl.innerHTML = '<div class="card"><p class="module-desc" style="margin:0;">Lade aktuelle Infos …</p></div>';
+    }
+
+    try {
+      const res = await fetchOpsSwr(
+        cacheKey,
+        function() { return window.SonaApi.getOpsNewsList(session.standortId); },
+        !!forceRefresh,
+        function() {
+          if (document.body.contains(targetEl)) {
+            renderNewsBoardInto(targetEl, session, false);
+          }
+        }
+      );
+      if (!document.body.contains(targetEl)) return;
+      if (!res || !res.success) {
+        const msg = (res && res.error) || '';
+        if (msg.indexOf('Unbekannte Aktion') !== -1) {
+          targetEl.innerHTML = '<div class="card"><p class="module-desc" style="margin:0;">Infoboard wird nach dem nächsten Backend-Sync (<code>@sync</code>) automatisch aktiviert.</p></div>';
+          return;
+        }
+        targetEl.innerHTML = '<div class="card"><p class="module-desc" style="margin:0;">Infos konnten nicht geladen werden.</p></div>';
+        return;
+      }
+      targetEl.innerHTML = renderNewsCardsHtml(res.activeEntries || []);
+    } catch (err) {
+      if (document.body.contains(targetEl)) {
+        targetEl.innerHTML = '<div class="card"><p class="module-desc" style="margin:0;">Aktuell keine Verbindung zum Infoboard.</p></div>';
+      }
+    }
+  }
+
+  async function loadTagesuebersichtTab(session, forceRefresh) {
+    const pane = document.getElementById('opsTabPane');
+    if (!pane || !session) return;
+    const cacheKey = 'news::' + session.standortId;
+
+    if (forceRefresh || !getOpsCache(cacheKey)) {
+      pane.innerHTML =
+        '<div class="card">' +
+          '<div class="kicker">Tagesübersicht · ' + esc(session.standortName) + '</div>' +
+          '<p class="module-desc">Lade Tagesübersicht &amp; Meldungen …</p>' +
+        '</div>';
+    }
+
+    let res = null;
+    try {
+      res = await fetchOpsSwr(
+        cacheKey,
+        function() { return window.SonaApi.getOpsNewsList(session.standortId); },
+        !!forceRefresh,
+        function() {
+          if (document.getElementById('opsTabPane')) {
+            loadTagesuebersichtTab(session, false);
+          }
+        }
+      );
+    } catch (err) {
+      res = { success: false, error: err && err.message ? err.message : String(err) };
+    }
+    if (!document.getElementById('opsTabPane')) return;
+
+    const todayIso = (res && res.todayIso) || todayIsoLocal();
+    const canManage = !!(res && res.canManage);
+    const activeEntries = (res && res.success && Array.isArray(res.activeEntries)) ? res.activeEntries : [];
+    const allEntries = (res && res.success && Array.isArray(res.allEntries)) ? res.allEntries : [];
+    const backendPending = !!(res && !res.success && String(res.error || '').indexOf('Unbekannte Aktion') !== -1);
+
+    const routineCardHtml =
+      '<div class="home-routine-card" style="margin-bottom:18px;">' +
+        '<div class="card-head" style="margin-bottom:4px;">' +
+          '<div>' +
+            '<div class="kicker">Tägliche Basis</div>' +
+            '<h3>Routineaufgaben</h3>' +
+          '</div>' +
+          '<button type="button" id="btnOpsNewsReload" class="btn btn-sm">Aktualisieren</button>' +
+        '</div>' +
+        '<p class="module-desc" style="margin:0;">Feste Tagesroutinen für Küche, Bar &amp; Service – täglich abhaken und dokumentieren.</p>' +
+        '<div class="home-routine-links">' +
+          '<button type="button" class="home-routine-link" data-routine-view="ops_putzplan">' +
+            '<div><div class="home-routine-link-title">Putzplan</div><div class="home-routine-link-sub">Tägliche &amp; wöchentliche Reinigung</div></div>' +
+            '<span>→</span>' +
+          '</button>' +
+          '<button type="button" class="home-routine-link" data-routine-view="ops_todo">' +
+            '<div><div class="home-routine-link-title">To-Do-Liste</div><div class="home-routine-link-sub">Checkliste für Früh- &amp; Spätschicht</div></div>' +
+            '<span>→</span>' +
+          '</button>' +
+        '</div>' +
+      '</div>';
+
+    const editorHtml = canManage ? (
+      '<div class="card" style="margin-bottom:18px;">' +
+        '<div class="card-head">' +
+          '<div>' +
+            '<div class="kicker">Serviceleitung · Veröffentlichung für Startseite</div>' +
+            '<h3>Neue Info oder Dokument eintragen</h3>' +
+          '</div>' +
+        '</div>' +
+        '<div id="opsNewsMsg" style="font-size:12.5px;margin-bottom:10px;"></div>' +
+        '<div class="form-field">' +
+          '<label class="kicker">Zeitraum / Info-Typ (steuert die Anzeigedauer auf der Startseite)</label>' +
+          '<div class="ops-news-type-pills" id="opsNewsTypePills">' +
+            '<button type="button" class="btn btn-sm btn-primary" data-news-type="TAG">Tagesinfo (Heute)</button>' +
+            '<button type="button" class="btn btn-sm" data-news-type="WOCHE">Wocheninfo (7 Tage)</button>' +
+            '<button type="button" class="btn btn-sm" data-news-type="MONAT">Monatsinfo (30 Tage)</button>' +
+            '<button type="button" class="btn btn-sm" data-news-type="DAUERHAFT">Dauerhaft / Wichtig</button>' +
+          '</div>' +
+        '</div>' +
+        '<div class="user-modal-grid">' +
+          '<div class="form-field">' +
+            '<label class="kicker" for="opsNewsTitel">Titel (z. B. Neue Karte)</label>' +
+            '<input type="text" id="opsNewsTitel" class="input-control" maxlength="140" placeholder="z. B. Neue Winterkarte ab sofort">' +
+          '</div>' +
+          '<div class="form-field">' +
+            '<label class="kicker" for="opsNewsBereich">Bereich</label>' +
+            '<select id="opsNewsBereich" class="input-control">' +
+              '<option value="ALLE">Alle Bereiche</option>' +
+              '<option value="SERVICE">Service</option>' +
+              '<option value="BAR">Bar</option>' +
+              '<option value="KUECHE">Küche</option>' +
+            '</select>' +
+          '</div>' +
+          '<div class="form-field">' +
+            '<label class="kicker" for="opsNewsAb">Gültig ab</label>' +
+            '<input type="date" id="opsNewsAb" class="input-control" value="' + esc(todayIso) + '">' +
+          '</div>' +
+          '<div class="form-field" id="opsNewsBisWrap">' +
+            '<label class="kicker" for="opsNewsBis">Sichtbar bis (automatisch ausgeblendet danach)</label>' +
+            '<input type="date" id="opsNewsBis" class="input-control" value="' + esc(todayIso) + '">' +
+          '</div>' +
+        '</div>' +
+        '<div class="form-field">' +
+          '<label class="kicker" for="opsNewsInhalt">Info-Text (optional auch reine Textmeldung)</label>' +
+          '<textarea id="opsNewsInhalt" class="input-control" rows="3" maxlength="4000" placeholder="Wichtige Hinweise, Änderungen, Briefings für das Team …"></textarea>' +
+        '</div>' +
+        '<div class="user-modal-grid">' +
+          '<div class="form-field">' +
+            '<label class="kicker" for="opsNewsFile">Dokument zur Ansicht hochladen (optional, PDF/Bild max. 8 MB)</label>' +
+            '<input type="file" id="opsNewsFile" class="input-control" accept=".pdf,image/*,.doc,.docx,.xls,.xlsx">' +
+          '</div>' +
+          '<div class="form-field">' +
+            '<label class="kicker" for="opsNewsDocName">Dokumentname auf der Startseite</label>' +
+            '<input type="text" id="opsNewsDocName" class="input-control" maxlength="120" placeholder="z. B. Neue Getränkekarte 2026">' +
+          '</div>' +
+        '</div>' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-top:6px;">' +
+          '<label class="rbac-tab-chip"><input type="checkbox" id="opsNewsPinned"><span>Oben anheften (Wichtig)</span></label>' +
+          '<button type="button" id="btnSaveOpsNews" class="btn btn-primary">Auf Startseite veröffentlichen</button>' +
+        '</div>' +
+      '</div>'
+    ) : '';
+
+    const listRowsHtml = allEntries.length
+      ? '<div class="table-wrap"><table><thead><tr><th>Status</th><th>Typ</th><th>Titel &amp; Info</th><th>Dokument</th><th>Gültigkeit</th>' + (canManage ? '<th>Aktion</th>' : '') + '</tr></thead><tbody>' +
+          allEntries.map(function(it) {
+            const meta = newsTypeLabel(it.typ);
+            const statusBadge = it.isActive
+              ? '<span class="badge badge-ok">Aktiv</span>'
+              : '<span class="badge">Abgelaufen</span>';
+            const docCol = it.docUrl
+              ? '<a class="news-doc-link" href="' + esc(it.docUrl) + '" target="_blank" rel="noopener noreferrer">📄 ' + esc(it.docName || 'Öffnen') + ' ↗</a>'
+              : '—';
+            const rangeCol = it.typ === 'DAUERHAFT'
+              ? 'Dauerhaft'
+              : (formatIsoShortDe(it.gueltigAb) + ' – ' + formatIsoShortDe(it.gueltigBis));
+            return '<tr>' +
+              '<td>' + statusBadge + '</td>' +
+              '<td><span class="badge ' + meta.cls + '">' + esc(meta.label) + '</span></td>' +
+              '<td><b>' + esc(it.titel) + '</b>' + (it.inhalt ? '<div style="font-size:12px;color:var(--os-silk);margin-top:2px;max-width:420px;white-space:pre-wrap;">' + esc(it.inhalt.slice(0, 200)) + (it.inhalt.length > 200 ? '…' : '') + '</div>' : '') + '</td>' +
+              '<td>' + docCol + '</td>' +
+              '<td style="white-space:nowrap;font-size:12px;">' + esc(rangeCol) + '</td>' +
+              (canManage ? '<td><button type="button" class="btn btn-danger btn-sm ops-news-del-btn" data-news-id="' + esc(it.id) + '">Entfernen</button></td>' : '') +
+            '</tr>';
+          }).join('') +
+        '</tbody></table></div>'
+      : '<p class="module-desc" style="margin:0;">Noch keine Meldungen hinterlegt.</p>';
+
+    pane.innerHTML =
+      routineCardHtml +
+      (backendPending
+        ? '<div class="card" style="margin-bottom:18px;"><p class="module-desc" style="margin:0;">Hinweis: Das Backend für <b>Tagesübersicht &amp; Infoboard</b> wartet noch auf <code>@sync</code>. Sobald synchronisiert wurde, können hier Meldungen &amp; PDFs veröffentlicht werden.</p></div>'
+        : editorHtml) +
+      '<div class="card" style="margin-bottom:18px;">' +
+        '<div class="card-head"><div><div class="kicker">Vorschau Startseite</div><h3>Aktive Meldungen („Was gibt\'s Neues?“)</h3></div></div>' +
+        renderNewsCardsHtml(activeEntries) +
+      '</div>' +
+      '<div class="card">' +
+        '<div class="card-head"><div><div class="kicker">Verlauf &amp; Verwaltung</div><h3>Alle Einträge (' + esc(allEntries.length) + ')</h3></div></div>' +
+        listRowsHtml +
+      '</div>';
+
+    pane.querySelectorAll('[data-routine-view]').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        if (window.SonaApp && window.SonaApp.openView) {
+          window.SonaApp.openView(btn.dataset.routineView);
+        }
+      });
+    });
+
+    const reloadBtn = document.getElementById('btnOpsNewsReload');
+    if (reloadBtn) {
+      reloadBtn.addEventListener('click', function() {
+        loadTagesuebersichtTab(session, true);
+      });
+    }
+
+    if (canManage && !backendPending) {
+      let selectedType = 'TAG';
+      const pillsWrap = document.getElementById('opsNewsTypePills');
+      const abEl = document.getElementById('opsNewsAb');
+      const bisEl = document.getElementById('opsNewsBis');
+      const bisWrap = document.getElementById('opsNewsBisWrap');
+
+      const syncDateDefaults = function() {
+        if (!abEl || !bisEl || !bisWrap) return;
+        const base = abEl.value || todayIso;
+        if (selectedType === 'DAUERHAFT') {
+          bisWrap.classList.add('hidden');
+          return;
+        }
+        bisWrap.classList.remove('hidden');
+        const add = selectedType === 'MONAT' ? 30 : (selectedType === 'WOCHE' ? 7 : 0);
+        bisEl.value = addDaysToIso(base, add);
+      };
+
+      if (pillsWrap) {
+        pillsWrap.querySelectorAll('[data-news-type]').forEach(function(b) {
+          b.addEventListener('click', function() {
+            selectedType = b.dataset.newsType || 'TAG';
+            pillsWrap.querySelectorAll('[data-news-type]').forEach(function(x) {
+              x.classList.toggle('btn-primary', x === b);
+            });
+            syncDateDefaults();
+          });
+        });
+      }
+      if (abEl) abEl.addEventListener('change', syncDateDefaults);
+
+      const fileEl = document.getElementById('opsNewsFile');
+      const docNameEl = document.getElementById('opsNewsDocName');
+      if (fileEl && docNameEl) {
+        fileEl.addEventListener('change', function() {
+          const f = fileEl.files && fileEl.files[0];
+          if (f && !docNameEl.value.trim()) {
+            docNameEl.value = f.name.replace(/\.[^.]+$/, '');
+          }
+        });
+      }
+
+      const btnSave = document.getElementById('btnSaveOpsNews');
+      if (btnSave) {
+        btnSave.addEventListener('click', async function() {
+          const msgEl = document.getElementById('opsNewsMsg');
+          const titel = (document.getElementById('opsNewsTitel') && document.getElementById('opsNewsTitel').value || '').trim();
+          const inhalt = (document.getElementById('opsNewsInhalt') && document.getElementById('opsNewsInhalt').value || '').trim();
+          const bereich = (document.getElementById('opsNewsBereich') && document.getElementById('opsNewsBereich').value) || 'ALLE';
+          const gueltigAb = abEl ? abEl.value : todayIso;
+          const gueltigBis = (selectedType !== 'DAUERHAFT' && bisEl) ? bisEl.value : '';
+          const pinned = !!(document.getElementById('opsNewsPinned') && document.getElementById('opsNewsPinned').checked);
+
+          if (titel.length < 2) {
+            if (msgEl) { msgEl.style.color = '#f87171'; msgEl.textContent = 'Bitte einen Titel eingeben (mind. 2 Zeichen).'; }
+            return;
+          }
+
+          let docBase64 = '';
+          let docMimeType = '';
+          let docFileName = '';
+          const fileObj = fileEl && fileEl.files && fileEl.files[0];
+          if (fileObj) {
+            if (fileObj.size > 8 * 1024 * 1024) {
+              if (msgEl) { msgEl.style.color = '#f87171'; msgEl.textContent = 'Datei ist zu groß (maximal 8 MB erlaubt).'; }
+              return;
+            }
+            docFileName = fileObj.name;
+            docMimeType = fileObj.type || 'application/pdf';
+            docBase64 = await new Promise(function(resolve, reject) {
+              const reader = new FileReader();
+              reader.onload = function() { resolve(String(reader.result || '')); };
+              reader.onerror = function() { reject(new Error('Datei konnte nicht gelesen werden.')); };
+              reader.readAsDataURL(fileObj);
+            });
+          }
+
+          btnSave.disabled = true;
+          btnSave.textContent = 'Veröffentlicht…';
+          if (msgEl) msgEl.textContent = '';
+
+          try {
+            const saveRes = await window.SonaApi.saveOpsNews(session.standortId, {
+              typ: selectedType,
+              bereich: bereich,
+              titel: titel,
+              inhalt: inhalt,
+              gueltigAb: gueltigAb,
+              gueltigBis: gueltigBis,
+              pinned: pinned,
+              docName: docNameEl ? docNameEl.value.trim() : '',
+              docFileName: docFileName,
+              docMimeType: docMimeType,
+              docBase64: docBase64
+            });
+            if (!saveRes || !saveRes.success) {
+              if (msgEl) { msgEl.style.color = '#f87171'; msgEl.textContent = (saveRes && saveRes.error) || 'Speichern fehlgeschlagen.'; }
+              return;
+            }
+            invalidateOpsCache('news::' + session.standortId);
+            if (window.SonaApp && window.SonaApp.toast) {
+              window.SonaApp.toast('Info auf Startseite veröffentlicht.');
+            }
+            loadTagesuebersichtTab(session, true);
+          } catch (eSave) {
+            if (msgEl) { msgEl.style.color = '#f87171'; msgEl.textContent = 'Verbindungsfehler: ' + (eSave && eSave.message ? eSave.message : String(eSave)); }
+          } finally {
+            btnSave.disabled = false;
+            btnSave.textContent = 'Auf Startseite veröffentlichen';
+          }
+        });
+      }
+
+      pane.querySelectorAll('.ops-news-del-btn').forEach(function(btn) {
+        btn.addEventListener('click', async function() {
+          const nid = btn.dataset.newsId;
+          if (!nid) return;
+          btn.disabled = true;
+          try {
+            const dRes = await window.SonaApi.deleteOpsNews(session.standortId, nid);
+            if (dRes && dRes.success) {
+              invalidateOpsCache('news::' + session.standortId);
+              if (window.SonaApp && window.SonaApp.toast) window.SonaApp.toast('Eintrag entfernt.');
+              loadTagesuebersichtTab(session, true);
+            }
+          } finally {
+            btn.disabled = false;
+          }
+        });
+      });
+    }
+  }
+
   function prefetch(session, sectionKey) {
     if (!session || !session.standortId) return;
     const sid = session.standortId;
@@ -1579,6 +1979,12 @@
           if (r && r.success) setOpsCache('rating::' + sid, r);
         }).catch(function() {});
       }
+    } else if (sectionKey === 'ops_tagesuebersicht') {
+      if (!getOpsCache('news::' + sid)) {
+        window.SonaApi.getOpsNewsList(sid).then(function(r) {
+          if (r && r.success) setOpsCache('news::' + sid, r);
+        }).catch(function() {});
+      }
     }
   }
 
@@ -1586,6 +1992,7 @@
     openExternalTab: openExternalTab,
     clearCache: clearCache,
     prefetch: prefetch,
+    renderNewsBoardInto: renderNewsBoardInto,
     renderAuswertungInto: function(targetEl, session) {
       if (!targetEl || !session) return;
       loadMonthlySummary(session, false, OPS_STATE.selectedPeriod, targetEl);
@@ -1618,6 +2025,12 @@
 
       const renderOpsHome = function() {
         const cards = [];
+        cards.push(
+          '<button type="button" class="home-tile" data-ops-nav="ops_tagesuebersicht">' +
+            '<div class="home-tile-head"><h4 class="home-tile-title">Tagesübersicht &amp; Infos</h4><span class="home-tile-arrow">→</span></div>' +
+            '<p class="home-tile-desc">Routineaufgaben, Neuerungen &amp; Dokumente verwalten</p>' +
+          '</button>'
+        );
         if (canSchwundInput) {
           cards.push(
             '<button type="button" class="home-tile" data-ops-ext="' + esc(schwundUrl) + '">' +
@@ -1701,6 +2114,12 @@
           });
         }
       };
+
+      if (activeSection === 'tagesuebersicht') {
+        renderSectionWrapper('Tagesübersicht');
+        loadTagesuebersichtTab(session, false);
+        return;
+      }
 
       if (activeSection === 'reklamation') {
         if (!canReklamation) {
