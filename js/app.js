@@ -1739,7 +1739,7 @@
   }
 
   async function renderAdminSourcesView() {
-    const c = $('mainContent');
+    const c = $('osMainContent');
     if (!c) return;
     c.innerHTML =
       '<div class="card">' +
@@ -3492,16 +3492,12 @@
     };
 
     if ('serviceWorker' in navigator) {
-      const hadController = !!navigator.serviceWorker.controller;
-      navigator.serviceWorker.addEventListener('controllerchange', () => {
-        if (!hadController) return;
-        showUpdateAvailablePopup('');
-      });
       navigator.serviceWorker.register('./sw.js').then(reg => {
         try { reg.update(); } catch (e) {}
       }).catch(() => {});
     }
 
+    setTimeout(checkForAppUpdate, 5000);
     setInterval(checkForAppUpdate, 180000);
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'visible') checkForAppUpdate();
