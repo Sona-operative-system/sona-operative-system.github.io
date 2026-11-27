@@ -1952,9 +1952,16 @@
       ? '<div class="table-wrap"><table><thead><tr><th>Status</th><th>Typ</th><th>Titel &amp; Info</th><th>Dokument</th><th>Gültigkeit</th>' + (canDelete ? '<th>Aktion</th>' : '') + '</tr></thead><tbody>' +
           allEntries.map(function(it) {
             const meta = newsTypeLabel(it.typ);
+            const todayLocalIso = (function() {
+              const d = new Date();
+              return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+            })();
+            const isPlanned = !it.isActive && it.gueltigAb && String(it.gueltigAb).slice(0, 10) > todayLocalIso;
             const statusBadge = it.isActive
               ? '<span class="badge badge-ok">Aktiv</span>'
-              : '<span class="badge">Abgelaufen</span>';
+              : (isPlanned
+                ? '<span class="badge" style="border-color:rgba(230,180,85,0.45);color:var(--os-amber);">Geplant</span>'
+                : '<span class="badge">Abgelaufen</span>');
             const docCol = it.docUrl
               ? '<a class="news-doc-link" href="' + esc(it.docUrl) + '" target="_blank" rel="noopener noreferrer">📄 ' + esc(it.docName || 'Öffnen') + ' ↗</a>'
               : '—';
