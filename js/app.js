@@ -433,6 +433,9 @@
       if (hasOpTab('tagesuebersicht')) {
         opsNavItems.push({ key: 'ops_tagesuebersicht', title: 'Tagesübersicht', pillar: 'OPERATIONS' });
       }
+      if (hasOpTab('liste86')) {
+        opsNavItems.push({ key: 'ops_86', title: '86-Liste', pillar: 'OPERATIONS' });
+      }
       if (hasOpTab('schwund_eingabe') && opsMod.schwundUrl) {
         opsNavItems.push({ key: 'ops_schwund', title: 'Schwund', pillar: 'OPERATIONS', externalUrl: buildQuickOpsUrl(opsMod.schwundUrl, s) });
       }
@@ -623,6 +626,7 @@
       PRELOAD_STATE.timers.push(setTimeout(() => {
         if (!STATE.session || STATE.session.standortId !== session.standortId) return;
         window.SonaOperationsModule.prefetch(STATE.session, 'ops_tagesuebersicht');
+        window.SonaOperationsModule.prefetch(STATE.session, 'ops_86');
         if (mods.some(m => m.key === 'operations')) {
           window.SonaOperationsModule.prefetch(STATE.session, 'ops_todo');
           window.SonaOperationsModule.prefetch(STATE.session, 'ops_putzplan');
@@ -870,10 +874,24 @@
           : '<p class="module-desc" style="margin-top:8px;">Für deinen Benutzer sind aktuell keine Routine-Links freigegeben.</p>') +
       '</section>';
 
+    const list86SectionHtml =
+      '<section class="home-86-card">' +
+        '<div class="card-head" style="margin-bottom:4px;">' +
+          '<div>' +
+            '<div class="kicker">2. Aktuell nicht verfügbar · ' + esc(s.standortName) + '</div>' +
+            '<h3>86-Liste</h3>' +
+          '</div>' +
+          (opsMod
+            ? '<button type="button" class="btn btn-sm home-quick-view-btn" data-quick-view="ops_86">+ 86 eintragen / prüfen</button>'
+            : '') +
+        '</div>' +
+        '<div id="home86BoardSlot"></div>' +
+      '</section>';
+
     const newsSectionHtml =
       '<section class="pillar-section">' +
         '<div class="pillar-head" style="align-items:center;">' +
-          '<div><div class="kicker">2. Team-Briefing &amp; Dokumente</div><h3>Was gibt\'s Neues?</h3></div>' +
+          '<div><div class="kicker">3. Team-Briefing &amp; Dokumente</div><h3>Was gibt\'s Neues?</h3></div>' +
           (canManageNews
             ? '<button type="button" class="btn btn-sm home-quick-view-btn" data-quick-view="ops_tagesuebersicht">+ Info / Dokument eintragen</button>'
             : '') +
@@ -894,9 +912,13 @@
       '</div>' +
       '<div class="home-info-stack">' +
         routineSectionHtml +
+        list86SectionHtml +
         newsSectionHtml +
       '</div>';
 
+    if (window.SonaOperationsModule && window.SonaOperationsModule.render86BoardInto) {
+      window.SonaOperationsModule.render86BoardInto($('home86BoardSlot'), s, false);
+    }
     if (window.SonaOperationsModule && window.SonaOperationsModule.renderNewsBoardInto) {
       window.SonaOperationsModule.renderNewsBoardInto($('homeNewsBoardSlot'), s, false);
     }

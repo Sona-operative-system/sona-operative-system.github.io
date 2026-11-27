@@ -2026,3 +2026,81 @@ textarea.ops-textarea {
   flex-wrap: wrap;
   gap: 8px;
 }
+
+/* ============================================================================
+   86-Liste (Startseite & Operations Unterthema)
+   ============================================================================ */
+.home-86-card {
+  background: linear-gradient(135deg, rgba(242, 184, 181, 0.06), rgba(14, 14, 14, 0.94));
+  border: 1px solid rgba(242, 184, 181, 0.24);
+  border-radius: 12px;
+  padding: 18px 20px;
+}
+
+.home-86-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.home-86-item {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 11px 13px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(242, 184, 181, 0.22);
+}
+
+.home-86-item.is-needs-check {
+  border-color: rgba(245, 200, 100, 0.65);
+  background: rgba(245, 200, 100, 0.08);
+}
+
+.home-86-item-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.home-86-name {
+  font-weight: 600;
+  font-size: 13.5px;
+  color: var(--os-cream);
+}
+
+.home-86-note {
+  font-size: 12px;
+  color: var(--os-silk);
+}
+
+.ops-86-banner {
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: rgba(245, 200, 100, 0.12);
+  border: 1px solid rgba(245, 200, 100, 0.45);
+  color: #fde68a;
+  font-size: 13px;
+  margin-bottom: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.ops-86-empty {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: rgba(52, 211, 153, 0.1);
+  border: 1px solid rgba(52, 211, 153, 0.3);
+  color: #6ee7b7;
+  font-size: 12.5px;
+  margin-top: 8px;
+}

@@ -60,7 +60,7 @@
       return;
     }
     const sid = String(standortId);
-    ['summary::', 'reklam::', 'rating::', 'todo::', 'putz::', 'news::'].forEach(function(p) {
+    ['summary::', 'reklam::', 'rating::', 'todo::', 'putz::', 'news::', 'list86::'].forEach(function(p) {
       invalidateOpsCache(p + sid);
     });
   }
@@ -1948,6 +1948,266 @@
     }
   }
 
+  // ============================================================================
+  // 86-LISTE (Aktuell nicht verfügbar + tägliche "Noch aktuell?"-Prüfung)
+  // ============================================================================
+  async function render86BoardInto(targetEl, session, forceRefresh) {
+    if (!targetEl || !session || !session.standortId) return;
+    const cacheKey = 'list86::' + session.standortId;
+    if (forceRefresh || !getOpsCache(cacheKey)) {
+      targetEl.innerHTML = '<p class="module-desc" style="margin:8px 0 0;">Lade 86-Liste …</p>';
+    }
+
+    try {
+      const res = await fetchOpsSwr(
+        cacheKey,
+        function() { return window.SonaApi.getOps86List(session.standortId); },
+        !!forceRefresh,
+        function() {
+          if (document.body.contains(targetEl)) {
+            render86BoardInto(targetEl, session, false);
+          }
+        }
+      );
+      if (!document.body.contains(targetEl)) return;
+      if (!res || !res.success) {
+        const msg = (res && res.error) || '';
+        if (msg.indexOf('Unbekannte Aktion') !== -1) {
+          targetEl.innerHTML = '<p class="module-desc" style="margin:8px 0 0;">86-Liste wird nach dem nächsten Backend-Sync (<code>@sync</code>) automatisch aktiviert.</p>';
+          return;
+        }
+        targetEl.innerHTML = '<p class="module-desc" style="margin:8px 0 0;">86-Liste konnte nicht geladen werden.</p>';
+        return;
+      }
+
+      const items = Array.isArray(res.items) ? res.items : [];
+      if (!items.length) {
+        targetEl.innerHTML = '<div class="ops-86-empty">✓ Alles verfügbar – aktuell keine 86-Artikel</div>';
+        return;
+      }
+
+      const checkWarnHtml = res.needsCheckCount > 0
+        ? '<div class="ops-86-banner" style="margin:10px 0 0;">' +
+            '<span>⚠ <b>' + esc(res.needsCheckCount) + '</b> Artikel von gestern/älter müssen heute geprüft werden („Noch aktuell?“).</span>' +
+            '<button type="button" class="btn btn-sm" data-open-86-tab="1">Jetzt prüfen →</button>' +
+          '</div>'
+        : '';
+
+      targetEl.innerHTML =
+        checkWarnHtml +
+        '<div class="home-86-grid">' +
+          items.map(function(it) {
+            return '<div class="home-86-item' + (it.needsDailyCheck ? ' is-needs-check' : '') + '">' +
+              '<div class="home-86-item-top">' +
+                '<span class="home-86-name">' + esc(it.artikel) + '</span>' +
+                '<span class="badge ' + (it.needsDailyCheck ? 'badge-warn' : 'badge-err') + '">' +
+                  (it.needsDailyCheck ? 'Heute prüfen' : esc(it.bereich || '86')) +
+                '</span>' +
+              '</div>' +
+              (it.notiz ? '<div class="home-86-note">' + esc(it.notiz) + '</div>' : '') +
+            '</div>';
+          }).join('') +
+        '</div>';
+
+      targetEl.querySelectorAll('[data-open-86-tab]').forEach(function(b) {
+        b.addEventListener('click', function() {
+          if (window.SonaApp && window.SonaApp.openView) window.SonaApp.openView('ops_86');
+        });
+      });
+    } catch (err) {
+      if (document.body.contains(targetEl)) {
+        targetEl.innerHTML = '<p class="module-desc" style="margin:8px 0 0;">Aktuell keine Verbindung zur 86-Liste.</p>';
+      }
+    }
+  }
+
+  async function load86Tab(session, forceRefresh) {
+    const pane = document.getElementById('opsTabPane');
+    if (!pane || !session) return;
+    const cacheKey = 'list86::' + session.standortId;
+
+    if (forceRefresh || !getOpsCache(cacheKey)) {
+      pane.innerHTML =
+        '<div class="card">' +
+          '<div class="kicker">86-Liste · ' + esc(session.standortName) + '</div>' +
+          '<p class="module-desc">Lade aktuelle 86-Liste …</p>' +
+        '</div>';
+    }
+
+    let res = null;
+    try {
+      res = await fetchOpsSwr(
+        cacheKey,
+        function() { return window.SonaApi.getOps86List(session.standortId); },
+        !!forceRefresh,
+        function() {
+          if (document.getElementById('opsTabPane')) {
+            load86Tab(session, false);
+          }
+        }
+      );
+    } catch (err) {
+      res = { success: false, error: err && err.message ? err.message : String(err) };
+    }
+    if (!document.getElementById('opsTabPane')) return;
+
+    const backendPending = !!(res && !res.success && String(res.error || '').indexOf('Unbekannte Aktion') !== -1);
+    const items = (res && res.success && Array.isArray(res.items)) ? res.items : [];
+    const needsCheckCount = (res && res.success && res.needsCheckCount) ? res.needsCheckCount : 0;
+
+    const alertBannerHtml = needsCheckCount > 0
+      ? '<div class="ops-86-banner">' +
+          '<span>⚠ <b>' + esc(needsCheckCount) + ' Artikel</b> wurden heute noch nicht bestätigt – bitte prüfen, ob noch 86 („Noch aktuell?“) oder wieder verfügbar („Wieder da“).</span>' +
+        '</div>'
+      : '';
+
+    const rowsHtml = items.length
+      ? '<div class="table-wrap"><table><thead><tr><th>Artikel / Gericht</th><th>Bereich</th><th>Notiz</th><th>Tagesstatus</th><th>Aktionen</th></tr></thead><tbody>' +
+          items.map(function(it) {
+            const statusHtml = it.needsDailyCheck
+              ? '<span class="badge badge-warn">Prüfung fällig (zuletzt ' + esc(formatIsoShortDe(it.bestaetigtAm)) + ')</span>'
+              : '<span class="badge badge-ok">Heute bestätigt (' + esc(it.bestaetigtVon || it.eingetragenVon || 'Team') + ')</span>';
+            const actionsHtml =
+              '<div style="display:flex;gap:6px;flex-wrap:wrap;">' +
+                (it.needsDailyCheck
+                  ? '<button type="button" class="btn btn-primary btn-sm ops-86-confirm-btn" data-id="' + esc(it.id) + '">Noch aktuell? ✓</button>'
+                  : '') +
+                '<button type="button" class="btn btn-sm ops-86-resolve-btn" data-id="' + esc(it.id) + '">Wieder da ✓</button>' +
+              '</div>';
+            return '<tr class="' + (it.needsDailyCheck ? 'is-dirty' : '') + '">' +
+              '<td><b>' + esc(it.artikel) + '</b><div style="font-size:11.5px;color:var(--os-silk);">Eingetragen von ' + esc(it.eingetragenVon || 'Team') + '</div></td>' +
+              '<td><span class="badge">' + esc(it.bereich || 'ALLE') + '</span></td>' +
+              '<td style="font-size:12.5px;color:var(--os-silk);">' + esc(it.notiz || '—') + '</td>' +
+              '<td>' + statusHtml + '</td>' +
+              '<td style="white-space:nowrap;">' + actionsHtml + '</td>' +
+            '</tr>';
+          }).join('') +
+        '</tbody></table></div>'
+      : '<div class="ops-86-empty">✓ Alles verfügbar – aktuell stehen keine Artikel auf der 86-Liste.</div>';
+
+    pane.innerHTML =
+      alertBannerHtml +
+      (backendPending
+        ? '<div class="card" style="margin-bottom:16px;"><p class="module-desc" style="margin:0;">Hinweis: Das Backend für die <b>86-Liste</b> wartet noch auf <code>@sync</code>.</p></div>'
+        : '<div class="card" style="margin-bottom:16px;">' +
+            '<div class="card-head">' +
+              '<div><div class="kicker">Operations · ' + esc(session.standortName) + '</div><h3>Artikel auf 86 setzen (aktuell nicht verfügbar)</h3></div>' +
+              '<button type="button" id="btnOps86Reload" class="btn btn-sm">Aktualisieren</button>' +
+            '</div>' +
+            '<div id="ops86Msg" style="font-size:12.5px;margin-bottom:8px;"></div>' +
+            '<div class="user-modal-grid">' +
+              '<div class="form-field">' +
+                '<label class="kicker" for="ops86Artikel">Artikel / Gericht / Getränk</label>' +
+                '<input type="text" id="ops86Artikel" class="input-control" maxlength="120" placeholder="z. B. Lachs Sashimi, Matcha Latte …">' +
+              '</div>' +
+              '<div class="form-field">' +
+                '<label class="kicker" for="ops86Bereich">Bereich</label>' +
+                '<select id="ops86Bereich" class="input-control">' +
+                  '<option value="KUECHE">Küche</option>' +
+                  '<option value="BAR">Bar</option>' +
+                  '<option value="SERVICE">Service</option>' +
+                  '<option value="DESSERT">Dessert</option>' +
+                  '<option value="ALLE">Alle</option>' +
+                '</select>' +
+              '</div>' +
+            '</div>' +
+            '<div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;">' +
+              '<div class="form-field" style="flex:1;min-width:220px;margin-bottom:0;">' +
+                '<label class="kicker" for="ops86Notiz">Notiz / Grund (optional)</label>' +
+                '<input type="text" id="ops86Notiz" class="input-control" maxlength="300" placeholder="z. B. Lieferung erst morgen, ausverkauft">' +
+              '</div>' +
+              '<button type="button" id="btnAddOps86" class="btn btn-primary">Auf 86 setzen</button>' +
+            '</div>' +
+          '</div>') +
+      '<div class="card">' +
+        '<div class="card-head"><div><div class="kicker">Aktive 86-Liste</div><h3>Aktuell nicht verfügbar (' + esc(items.length) + ')</h3></div></div>' +
+        rowsHtml +
+      '</div>';
+
+    const reloadBtn = document.getElementById('btnOps86Reload');
+    if (reloadBtn) {
+      reloadBtn.addEventListener('click', function() { load86Tab(session, true); });
+    }
+
+    const addFn = async function() {
+      const artEl = document.getElementById('ops86Artikel');
+      const berEl = document.getElementById('ops86Bereich');
+      const notizEl = document.getElementById('ops86Notiz');
+      const msgEl = document.getElementById('ops86Msg');
+      const btn = document.getElementById('btnAddOps86');
+      const artikel = artEl ? artEl.value.trim() : '';
+      if (artikel.length < 2) {
+        if (msgEl) { msgEl.style.color = '#f87171'; msgEl.textContent = 'Bitte Artikelnamen eingeben (mind. 2 Zeichen).'; }
+        return;
+      }
+      if (btn) { btn.disabled = true; btn.textContent = 'Speichert…'; }
+      if (msgEl) msgEl.textContent = '';
+      try {
+        const addRes = await window.SonaApi.addOps86Item(session.standortId, {
+          artikel: artikel,
+          bereich: berEl ? berEl.value : 'KUECHE',
+          notiz: notizEl ? notizEl.value.trim() : ''
+        });
+        if (!addRes || !addRes.success) {
+          if (msgEl) { msgEl.style.color = '#f87171'; msgEl.textContent = (addRes && addRes.error) || 'Eintragen fehlgeschlagen.'; }
+          return;
+        }
+        invalidateOpsCache('list86::' + session.standortId);
+        if (window.SonaApp && window.SonaApp.toast) window.SonaApp.toast('„' + artikel + '“ auf 86 gesetzt.');
+        load86Tab(session, true);
+      } catch (eAdd) {
+        if (msgEl) { msgEl.style.color = '#f87171'; msgEl.textContent = 'Verbindungsfehler.'; }
+      } finally {
+        if (btn) { btn.disabled = false; btn.textContent = 'Auf 86 setzen'; }
+      }
+    };
+
+    const btnAdd = document.getElementById('btnAddOps86');
+    if (btnAdd) btnAdd.addEventListener('click', addFn);
+    const artInput = document.getElementById('ops86Artikel');
+    if (artInput) {
+      artInput.addEventListener('keydown', function(ev) {
+        if (ev.key === 'Enter') { ev.preventDefault(); addFn(); }
+      });
+    }
+
+    pane.querySelectorAll('.ops-86-confirm-btn').forEach(function(b) {
+      b.addEventListener('click', async function() {
+        const id = b.dataset.id;
+        b.disabled = true;
+        b.textContent = 'Bestätigt…';
+        try {
+          const cRes = await window.SonaApi.confirmOps86Item(session.standortId, id);
+          if (cRes && cRes.success) {
+            invalidateOpsCache('list86::' + session.standortId);
+            if (window.SonaApp && window.SonaApp.toast) window.SonaApp.toast('Für heute als noch 86 bestätigt.');
+            load86Tab(session, true);
+          }
+        } finally {
+          b.disabled = false;
+        }
+      });
+    });
+
+    pane.querySelectorAll('.ops-86-resolve-btn').forEach(function(b) {
+      b.addEventListener('click', async function() {
+        const id = b.dataset.id;
+        b.disabled = true;
+        b.textContent = 'Entfernt…';
+        try {
+          const rRes = await window.SonaApi.resolveOps86Item(session.standortId, id);
+          if (rRes && rRes.success) {
+            invalidateOpsCache('list86::' + session.standortId);
+            if (window.SonaApp && window.SonaApp.toast) window.SonaApp.toast('Artikel wieder verfügbar (von 86 entfernt).');
+            load86Tab(session, true);
+          }
+        } finally {
+          b.disabled = false;
+        }
+      });
+    });
+  }
+
   function prefetch(session, sectionKey) {
     if (!session || !session.standortId) return;
     const sid = session.standortId;
@@ -1985,6 +2245,12 @@
           if (r && r.success) setOpsCache('news::' + sid, r);
         }).catch(function() {});
       }
+    } else if (sectionKey === 'ops_86') {
+      if (!getOpsCache('list86::' + sid)) {
+        window.SonaApi.getOps86List(sid).then(function(r) {
+          if (r && r.success) setOpsCache('list86::' + sid, r);
+        }).catch(function() {});
+      }
     }
   }
 
@@ -1993,6 +2259,7 @@
     clearCache: clearCache,
     prefetch: prefetch,
     renderNewsBoardInto: renderNewsBoardInto,
+    render86BoardInto: render86BoardInto,
     renderAuswertungInto: function(targetEl, session) {
       if (!targetEl || !session) return;
       loadMonthlySummary(session, false, OPS_STATE.selectedPeriod, targetEl);
@@ -2029,6 +2296,12 @@
           '<button type="button" class="home-tile" data-ops-nav="ops_tagesuebersicht">' +
             '<div class="home-tile-head"><h4 class="home-tile-title">Tagesübersicht &amp; Infos</h4><span class="home-tile-arrow">→</span></div>' +
             '<p class="home-tile-desc">Routineaufgaben, Neuerungen &amp; Dokumente verwalten</p>' +
+          '</button>'
+        );
+        cards.push(
+          '<button type="button" class="home-tile" data-ops-nav="ops_86">' +
+            '<div class="home-tile-head"><h4 class="home-tile-title">86-Liste</h4><span class="home-tile-arrow">→</span></div>' +
+            '<p class="home-tile-desc">Ausverkaufte Artikel eintragen &amp; täglich prüfen</p>' +
           '</button>'
         );
         if (canSchwundInput) {
@@ -2118,6 +2391,12 @@
       if (activeSection === 'tagesuebersicht') {
         renderSectionWrapper('Tagesübersicht');
         loadTagesuebersichtTab(session, false);
+        return;
+      }
+
+      if (activeSection === '86') {
+        renderSectionWrapper('86-Liste (Ausverkauft)');
+        load86Tab(session, false);
         return;
       }
 

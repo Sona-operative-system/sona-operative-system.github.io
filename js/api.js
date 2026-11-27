@@ -22,7 +22,8 @@
     os_ops_rating_meta: true,
     os_ops_todo_day: true,
     os_ops_putzplan_day: true,
-    os_ops_news_list: true
+    os_ops_news_list: true,
+    os_ops_86_list: true
   };
 
   function setUnauthorizedHandler(fn) {
@@ -326,6 +327,21 @@
     deleteOpsNews: (standortId, newsId) => callPost('os_ops_news_delete', {
       standortId: standortId,
       newsId: newsId
+    }),
+    getOps86List: (standortId) => callPost('os_ops_86_list', {
+      standortId: standortId
+    }),
+    addOps86Item: (standortId, entry) => callPost('os_ops_86_add', {
+      standortId: standortId,
+      entry: entry || {}
+    }),
+    confirmOps86Item: (standortId, itemId) => callPost('os_ops_86_confirm', {
+      standortId: standortId,
+      itemId: itemId
+    }),
+    resolveOps86Item: (standortId, itemId) => callPost('os_ops_86_resolve', {
+      standortId: standortId,
+      itemId: itemId
     }),
     getModuleLaunchUrl: (moduleKey, standortId) => callPost('os_module_launch', {
       moduleKey: moduleKey,
