@@ -1,6 +1,93 @@
 'use strict';
 
 (function() {
+  const OPS_FRESH_TTL_MS = 90000;
+  const OPS_STALE_TTL_MS = 600000;
+  const OPS_CACHE = Object.create(null);
+  const OPS_STORAGE_PREFIX = 'sona_os_ops_cache_v1_';
+
+  function getOpsCache(key) {
+    const now = Date.now();
+    let entry = OPS_CACHE[key];
+    if (!entry) {
+      try {
+        const raw = sessionStorage.getItem(OPS_STORAGE_PREFIX + key);
+        if (raw) {
+          entry = JSON.parse(raw);
+          OPS_CACHE[key] = entry;
+        }
+      } catch (e) {}
+    }
+    if (!entry || !entry.ts || (now - entry.ts) > OPS_STALE_TTL_MS) {
+      return null;
+    }
+    return { ts: entry.ts, data: entry.data, isStale: (now - entry.ts) > OPS_FRESH_TTL_MS };
+  }
+
+  function setOpsCache(key, data) {
+    if (!data || data.success === false) return;
+    const entry = { ts: Date.now(), data: data };
+    OPS_CACHE[key] = entry;
+    try {
+      sessionStorage.setItem(OPS_STORAGE_PREFIX + key, JSON.stringify(entry));
+    } catch (e) {}
+  }
+
+  function invalidateOpsCache(prefix) {
+    if (!prefix) {
+      Object.keys(OPS_CACHE).forEach(function(k) { delete OPS_CACHE[k]; });
+      try {
+        Object.keys(sessionStorage).forEach(function(k) {
+          if (k.indexOf(OPS_STORAGE_PREFIX) === 0) sessionStorage.removeItem(k);
+        });
+      } catch (e) {}
+      return;
+    }
+    Object.keys(OPS_CACHE).forEach(function(k) {
+      if (k.indexOf(prefix) === 0) delete OPS_CACHE[k];
+    });
+    try {
+      const sp = OPS_STORAGE_PREFIX + prefix;
+      Object.keys(sessionStorage).forEach(function(k) {
+        if (k.indexOf(sp) === 0) sessionStorage.removeItem(k);
+      });
+    } catch (e) {}
+  }
+
+  function clearCache(standortId) {
+    if (!standortId) {
+      invalidateOpsCache('');
+      return;
+    }
+    const sid = String(standortId);
+    ['summary::', 'reklam::', 'rating::', 'todo::', 'putz::'].forEach(function(p) {
+      invalidateOpsCache(p + sid);
+    });
+  }
+
+  async function fetchOpsSwr(cacheKey, fetcher, forceRefresh, onBackgroundUpdate) {
+    const cached = !forceRefresh ? getOpsCache(cacheKey) : null;
+    if (cached && cached.data) {
+      if (cached.isStale && typeof onBackgroundUpdate === 'function') {
+        Promise.resolve().then(fetcher).then(function(fresh) {
+          if (fresh && fresh.success) {
+            const prevJson = JSON.stringify(cached.data);
+            setOpsCache(cacheKey, fresh);
+            if (JSON.stringify(fresh) !== prevJson) {
+              onBackgroundUpdate(fresh);
+            }
+          }
+        }).catch(function() {});
+      }
+      return cached.data;
+    }
+    const fresh = await fetcher();
+    if (fresh && fresh.success) {
+      setOpsCache(cacheKey, fresh);
+    }
+    return fresh;
+  }
+
   const OPS_STATE = {
     activeTab: 'reklamation',
     selectedMonth: '',
@@ -79,14 +166,27 @@
     const slot = targetEl || document.getElementById('opsSchwundKpiSlot');
     if (!slot) return;
     const chosenPeriod = periodKey !== undefined ? periodKey : (OPS_STATE.selectedPeriod || '');
-    slot.innerHTML =
-      '<div class="card">' +
-        '<div class="kicker">Schwund- &amp; Bruch-Auswertung · ' + esc(session.standortName) + '</div>' +
-        '<p class="module-desc">Lade Auswertung …</p>' +
-      '</div>';
+    const cacheKey = 'summary::' + session.standortId + '::' + (chosenPeriod || 'LATEST');
+    if (forceRefresh || !getOpsCache(cacheKey)) {
+      slot.innerHTML =
+        '<div class="card">' +
+          '<div class="kicker">Schwund- &amp; Bruch-Auswertung · ' + esc(session.standortName) + '</div>' +
+          '<p class="module-desc">Lade Auswertung …</p>' +
+        '</div>';
+    }
 
     try {
-      const res = await window.SonaApi.getOpsMonthlySummary(session.standortId, !!forceRefresh, chosenPeriod);
+      const res = await fetchOpsSwr(
+        cacheKey,
+        function() { return window.SonaApi.getOpsMonthlySummary(session.standortId, !!forceRefresh, chosenPeriod); },
+        !!forceRefresh,
+        function() {
+          const curSlot = targetEl || document.getElementById('opsSchwundKpiSlot');
+          if (curSlot && document.body.contains(curSlot)) {
+            loadMonthlySummary(session, false, chosenPeriod, targetEl);
+          }
+        }
+      );
       const currentSlot = targetEl || document.getElementById('opsSchwundKpiSlot');
       if (!currentSlot || !document.body.contains(currentSlot)) return;
 
@@ -261,18 +361,31 @@
     }).join('');
   }
 
-  async function loadReklamationTab(session, requestedMonth) {
+  async function loadReklamationTab(session, requestedMonth, forceRefresh) {
     const pane = document.getElementById('opsTabPane');
     if (!pane) return;
+    const reqMonth = requestedMonth || OPS_STATE.selectedMonth || '';
+    const cacheKey = 'reklam::' + session.standortId + '::' + (reqMonth || 'LATEST');
 
-    pane.innerHTML =
-      '<div class="card">' +
-        '<div class="kicker">Gäste-Reklamation · ' + esc(session.standortName) + '</div>' +
-        '<p class="module-desc">Lade Monatsblatt &amp; Dropdown-Optionen aus der Reklamations-Tabelle …</p>' +
-      '</div>';
+    if (forceRefresh || !getOpsCache(cacheKey)) {
+      pane.innerHTML =
+        '<div class="card">' +
+          '<div class="kicker">Gäste-Reklamation · ' + esc(session.standortName) + '</div>' +
+          '<p class="module-desc">Lade Monatsblatt &amp; Dropdown-Optionen aus der Reklamations-Tabelle …</p>' +
+        '</div>';
+    }
 
     try {
-      const res = await window.SonaApi.getOpsReklamationMeta(session.standortId, requestedMonth || OPS_STATE.selectedMonth || '');
+      const res = await fetchOpsSwr(
+        cacheKey,
+        function() { return window.SonaApi.getOpsReklamationMeta(session.standortId, reqMonth); },
+        !!forceRefresh,
+        function() {
+          if (document.getElementById('opsTabPane')) {
+            loadReklamationTab(session, reqMonth, false);
+          }
+        }
+      );
       if (!document.getElementById('opsTabPane')) return;
 
       if (!res || !res.success) {
@@ -452,9 +565,11 @@
             window.SonaApp.toast('Gäste-Reklamation gespeichert (' + saveRes.sheetName + ').');
           }
 
-          // Liste direkt aktualisieren
+          // Cache invalidieren & Liste direkt aktualisieren
+          invalidateOpsCache('reklam::' + session.standortId + '::');
           const fresh = await window.SonaApi.getOpsReklamationMeta(session.standortId, saveRes.sheetName);
           if (fresh && fresh.success && fresh.status === 'AKTIV') {
+            setOpsCache('reklam::' + session.standortId + '::' + (fresh.sheetName || 'LATEST'), fresh);
             OPS_STATE.meta = fresh;
             OPS_STATE.selectedMonth = fresh.sheetName;
             if (monthSel && fresh.sheetName) monthSel.value = fresh.sheetName;
@@ -535,18 +650,30 @@
     '</td>';
   }
 
-  async function loadRatingTab(session) {
+  async function loadRatingTab(session, forceRefresh) {
     const pane = document.getElementById('opsTabPane');
     if (!pane) return;
+    const cacheKey = 'rating::' + session.standortId;
 
-    pane.innerHTML =
-      '<div class="card">' +
-        '<div class="kicker">Mitarbeiter Ranking · ' + esc(session.standortName) + '</div>' +
-        '<p class="module-desc">Lade Tabelle aus SONA HUB …</p>' +
-      '</div>';
+    if (forceRefresh || !getOpsCache(cacheKey)) {
+      pane.innerHTML =
+        '<div class="card">' +
+          '<div class="kicker">Mitarbeiter Ranking · ' + esc(session.standortName) + '</div>' +
+          '<p class="module-desc">Lade Tabelle aus SONA HUB …</p>' +
+        '</div>';
+    }
 
     try {
-      const res = await window.SonaApi.getOpsRatingMeta(session.standortId);
+      const res = await fetchOpsSwr(
+        cacheKey,
+        function() { return window.SonaApi.getOpsRatingMeta(session.standortId); },
+        !!forceRefresh,
+        function() {
+          if (document.getElementById('opsTabPane')) {
+            loadRatingTab(session, false);
+          }
+        }
+      );
       if (!document.getElementById('opsTabPane')) return;
 
       if (!res || !res.success) {
@@ -729,6 +856,7 @@
               }
               if (isStaff && addRes.member) staffList.push(addRes.member);
               if (!isStaff && addRes.member) azubiList.push(addRes.member);
+              invalidateOpsCache('rating::' + session.standortId);
               showAddForm = false;
               renderRatingBody();
               if (window.SonaApp && window.SonaApp.toast) {
@@ -861,6 +989,7 @@
                 return;
               }
               keys.forEach(function(k) { delete dirtyMap[k]; });
+              invalidateOpsCache('rating::' + session.standortId);
               pane.querySelectorAll('.ops-rating-row.is-dirty').forEach(function(tr) { tr.classList.remove('is-dirty'); });
               if (msgEl) {
                 msgEl.style.color = '#4ade80';
@@ -904,15 +1033,27 @@
     if (!pane) return;
     const dateIso = targetDateIso || OPS_STATE.selectedTodoDate || todayIsoLocal();
     OPS_STATE.selectedTodoDate = dateIso;
+    const cacheKey = 'todo::' + session.standortId + '::' + dateIso;
 
-    pane.innerHTML =
-      '<div class="card">' +
-        '<div class="kicker">To-Do-Liste · ' + esc(session.standortName) + '</div>' +
-        '<p class="module-desc">Lade Tagesaufgaben …</p>' +
-      '</div>';
+    if (forceRefresh || !getOpsCache(cacheKey)) {
+      pane.innerHTML =
+        '<div class="card">' +
+          '<div class="kicker">To-Do-Liste · ' + esc(session.standortName) + '</div>' +
+          '<p class="module-desc">Lade Tagesaufgaben …</p>' +
+        '</div>';
+    }
 
     try {
-      const res = await window.SonaApi.getOpsTodoDay(session.standortId, dateIso, !!forceRefresh);
+      const res = await fetchOpsSwr(
+        cacheKey,
+        function() { return window.SonaApi.getOpsTodoDay(session.standortId, dateIso, !!forceRefresh); },
+        !!forceRefresh,
+        function() {
+          if (document.getElementById('opsTabPane') && OPS_STATE.selectedTodoDate === dateIso) {
+            loadTodoTab(session, dateIso, false);
+          }
+        }
+      );
       if (!document.getElementById('opsTabPane')) return;
 
       if (!res || !res.success) {
@@ -1078,6 +1219,8 @@
                 updateProgressUi();
                 const msgEl = document.getElementById('opsTodoMsg');
                 if (msgEl) { msgEl.style.color = '#f87171'; msgEl.textContent = (tRes && tRes.error) || 'Speichern fehlgeschlagen.'; }
+              } else {
+                invalidateOpsCache('todo::' + session.standortId + '::' + res.dateIso);
               }
             } catch (eTog) {
               chk.checked = !newDone;
@@ -1107,7 +1250,8 @@
               return;
             }
             if (window.SonaApp && window.SonaApp.toast) window.SonaApp.toast('Tagesaufgabe hinzugefügt.');
-            loadTodoTab(session, res.dateIso, false);
+            invalidateOpsCache('todo::' + session.standortId + '::' + res.dateIso);
+            loadTodoTab(session, res.dateIso, true);
           } catch (eAdd) {
             if (msgEl) { msgEl.style.color = '#f87171'; msgEl.textContent = 'Verbindungsfehler.'; }
           } finally {
@@ -1143,8 +1287,11 @@
             btnNote.textContent = 'Speichert…';
             try {
               const nRes = await window.SonaApi.saveOpsTodoNote(session.standortId, res.dateIso, selectedRating, noteEl ? noteEl.value : undefined);
-              if (nRes && nRes.success && window.SonaApp && window.SonaApp.toast) {
-                window.SonaApp.toast('Tagesnotiz gespeichert.');
+              if (nRes && nRes.success) {
+                invalidateOpsCache('todo::' + session.standortId + '::' + res.dateIso);
+                if (window.SonaApp && window.SonaApp.toast) {
+                  window.SonaApp.toast('Tagesnotiz gespeichert.');
+                }
               }
             } finally {
               btnNote.disabled = false;
@@ -1179,20 +1326,32 @@
     }
   }
 
-  async function loadPutzplanTab(session, targetDateIso) {
+  async function loadPutzplanTab(session, targetDateIso, forceRefresh) {
     const pane = document.getElementById('opsTabPane');
     if (!pane) return;
     const dateIso = targetDateIso || OPS_STATE.selectedPutzplanDate || todayIsoLocal();
     OPS_STATE.selectedPutzplanDate = dateIso;
+    const cacheKey = 'putz::' + session.standortId + '::' + dateIso;
 
-    pane.innerHTML =
-      '<div class="card">' +
-        '<div class="kicker">Putzplan · ' + esc(session.standortName) + '</div>' +
-        '<p class="module-desc">Lade Tagesaufgaben …</p>' +
-      '</div>';
+    if (forceRefresh || !getOpsCache(cacheKey)) {
+      pane.innerHTML =
+        '<div class="card">' +
+          '<div class="kicker">Putzplan · ' + esc(session.standortName) + '</div>' +
+          '<p class="module-desc">Lade Tagesaufgaben …</p>' +
+        '</div>';
+    }
 
     try {
-      const res = await window.SonaApi.getOpsPutzplanDay(session.standortId, dateIso);
+      const res = await fetchOpsSwr(
+        cacheKey,
+        function() { return window.SonaApi.getOpsPutzplanDay(session.standortId, dateIso); },
+        !!forceRefresh,
+        function() {
+          if (document.getElementById('opsTabPane') && OPS_STATE.selectedPutzplanDate === dateIso) {
+            loadPutzplanTab(session, dateIso, false);
+          }
+        }
+      );
       if (!document.getElementById('opsTabPane')) return;
 
       if (!res || !res.success) {
@@ -1326,8 +1485,11 @@
                 updatePutzProgress();
                 const msgEl = document.getElementById('opsPutzMsg');
                 if (msgEl) { msgEl.style.color = '#f87171'; msgEl.textContent = (tRes && tRes.error) || 'Speichern fehlgeschlagen.'; }
-              } else if (tRes.person && personEl && !personEl.value.trim()) {
-                personEl.value = tRes.person;
+              } else {
+                invalidateOpsCache('putz::' + session.standortId + '::' + res.dateIso);
+                if (tRes.person && personEl && !personEl.value.trim()) {
+                  personEl.value = tRes.person;
+                }
               }
             } catch (eTog) {
               chk.checked = !newDone;
@@ -1350,6 +1512,7 @@
             try {
               const mRes = await window.SonaApi.saveOpsPutzplanMeta(session.standortId, res.dateIso, pVal, rVal);
               if (mRes && mRes.success) {
+                invalidateOpsCache('putz::' + session.standortId + '::' + res.dateIso);
                 if (pVal) saveOpsName(session, pVal);
                 if (window.SonaApp && window.SonaApp.toast) window.SonaApp.toast('Putzplan aktualisiert.');
               }
@@ -1373,7 +1536,7 @@
       if (prevBtn) prevBtn.addEventListener('click', function() { loadPutzplanTab(session, shiftIsoDateDays(dateIso, -7)); });
       if (todayBtn) todayBtn.addEventListener('click', function() { loadPutzplanTab(session, todayIsoLocal()); });
       if (nextBtn) nextBtn.addEventListener('click', function() { loadPutzplanTab(session, shiftIsoDateDays(dateIso, 7)); });
-      if (reloadBtn) reloadBtn.addEventListener('click', function() { loadPutzplanTab(session, dateIso); });
+      if (reloadBtn) reloadBtn.addEventListener('click', function() { loadPutzplanTab(session, dateIso, true); });
     } catch (err) {
       const currentPane = document.getElementById('opsTabPane');
       if (!currentPane) return;
@@ -1385,8 +1548,44 @@
     }
   }
 
+  function prefetch(session, sectionKey) {
+    if (!session || !session.standortId) return;
+    const sid = session.standortId;
+    const today = todayIsoLocal();
+    if (sectionKey === 'ops_todo') {
+      const d = OPS_STATE.selectedTodoDate || today;
+      if (!getOpsCache('todo::' + sid + '::' + d)) {
+        window.SonaApi.getOpsTodoDay(sid, d, false).then(function(r) {
+          if (r && r.success) setOpsCache('todo::' + sid + '::' + d, r);
+        }).catch(function() {});
+      }
+    } else if (sectionKey === 'ops_putzplan') {
+      const d = OPS_STATE.selectedPutzplanDate || today;
+      if (!getOpsCache('putz::' + sid + '::' + d)) {
+        window.SonaApi.getOpsPutzplanDay(sid, d).then(function(r) {
+          if (r && r.success) setOpsCache('putz::' + sid + '::' + d, r);
+        }).catch(function() {});
+      }
+    } else if (sectionKey === 'ops_reklamation') {
+      const m = OPS_STATE.selectedMonth || '';
+      if (!getOpsCache('reklam::' + sid + '::' + (m || 'LATEST'))) {
+        window.SonaApi.getOpsReklamationMeta(sid, m).then(function(r) {
+          if (r && r.success) setOpsCache('reklam::' + sid + '::' + (m || 'LATEST'), r);
+        }).catch(function() {});
+      }
+    } else if (sectionKey === 'ops_ranking') {
+      if (!getOpsCache('rating::' + sid)) {
+        window.SonaApi.getOpsRatingMeta(sid).then(function(r) {
+          if (r && r.success) setOpsCache('rating::' + sid, r);
+        }).catch(function() {});
+      }
+    }
+  }
+
   window.SonaOperationsModule = {
     openExternalTab: openExternalTab,
+    clearCache: clearCache,
+    prefetch: prefetch,
     renderAuswertungInto: function(targetEl, session) {
       if (!targetEl || !session) return;
       loadMonthlySummary(session, false, OPS_STATE.selectedPeriod, targetEl);

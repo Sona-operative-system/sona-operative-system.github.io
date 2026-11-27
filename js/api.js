@@ -2,6 +2,28 @@
 
 (function() {
   let unauthorizedHandler = null;
+  const IN_FLIGHT_READS = Object.create(null);
+  const DEDUPE_READ_ACTIONS = {
+    os_ping: true,
+    os_users: true,
+    os_session_check: true,
+    os_rbac_list: true,
+    os_audit_log: true,
+    os_module_launch: true,
+    os_bestand_dashboard: true,
+    os_bestand_detail: true,
+    os_controlling_meta: true,
+    os_controlling_analyse: true,
+    os_controlling_prognose_meta: true,
+    os_einkauf_overview: true,
+    os_rezeptur_overview: true,
+    os_rezeptur_detail: true,
+    os_ops_reklamation_meta: true,
+    os_ops_monthly_summary: true,
+    os_ops_rating_meta: true,
+    os_ops_todo_day: true,
+    os_ops_putzplan_day: true
+  };
 
   function setUnauthorizedHandler(fn) {
     unauthorizedHandler = typeof fn === 'function' ? fn : null;
@@ -73,37 +95,54 @@
       payload.token = token;
     }
 
-    const res = await fetch(url, {
-      method: 'POST',
-      redirect: 'follow',
-      headers: {
-        'Content-Type': 'text/plain;charset=utf-8'
-      },
-      body: JSON.stringify(payload)
-    });
-
-    if (!res.ok) {
-      throw new Error('Gateway HTTP ' + res.status);
+    const canDedupe = !!(DEDUPE_READ_ACTIONS[action] && !payload.forceRefresh);
+    const dedupeKey = canDedupe ? (url + '::' + JSON.stringify(payload)) : '';
+    if (dedupeKey && IN_FLIGHT_READS[dedupeKey]) {
+      return IN_FLIGHT_READS[dedupeKey];
     }
 
-    const text = await res.text();
-    let parsed;
-    try {
-      parsed = JSON.parse(text);
-    } catch (e) {
-      throw new Error('Gateway lieferte kein gültiges JSON (evtl. Google-Anmeldung oder fehlendes @sync-Deployment erforderlich).');
+    const reqPromise = (async function() {
+      const res = await fetch(url, {
+        method: 'POST',
+        redirect: 'follow',
+        headers: {
+          'Content-Type': 'text/plain;charset=utf-8'
+        },
+        body: JSON.stringify(payload)
+      });
+
+      if (!res.ok) {
+        throw new Error('Gateway HTTP ' + res.status);
+      }
+
+      const text = await res.text();
+      let parsed;
+      try {
+        parsed = JSON.parse(text);
+      } catch (e) {
+        throw new Error('Gateway lieferte kein gültiges JSON (evtl. Google-Anmeldung oder fehlendes @sync-Deployment erforderlich).');
+      }
+      if (
+        parsed &&
+        parsed.success === false &&
+        (parsed.code === 'UNAUTHORIZED' || parsed.code === 'SESSION_EXPIRED') &&
+        action !== 'os_login' &&
+        action !== 'os_session_check' &&
+        unauthorizedHandler
+      ) {
+        try { unauthorizedHandler(parsed.error || 'Sitzung abgelaufen.'); } catch (eUnauth) {}
+      }
+      return parsed;
+    })();
+
+    if (dedupeKey) {
+      IN_FLIGHT_READS[dedupeKey] = reqPromise;
+      reqPromise.finally(function() {
+        delete IN_FLIGHT_READS[dedupeKey];
+      });
     }
-    if (
-      parsed &&
-      parsed.success === false &&
-      (parsed.code === 'UNAUTHORIZED' || parsed.code === 'SESSION_EXPIRED') &&
-      action !== 'os_login' &&
-      action !== 'os_session_check' &&
-      unauthorizedHandler
-    ) {
-      try { unauthorizedHandler(parsed.error || 'Sitzung abgelaufen.'); } catch (eUnauth) {}
-    }
-    return parsed;
+
+    return reqPromise;
   }
 
   window.SonaApi = {

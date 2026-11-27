@@ -21,6 +21,62 @@
     deferredInstallPrompt: null
   };
 
+  const SESSION_CACHE_KEY = 'sona_os_session_cache_v1';
+  const SESSION_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+  const ADMIN_CACHE_FRESH_MS = 60000;
+  const ADMIN_CACHE_STALE_MS = 300000;
+  const ADMIN_CACHE = { rbac: null, audit: Object.create(null) };
+  const PRELOAD_STATE = {
+    urls: Object.create(null),
+    inFlight: Object.create(null),
+    warmedKey: '',
+    timers: []
+  };
+
+  function saveSessionCache(sess) {
+    if (!sess || !sess.success || !sess.user) return;
+    const token = window.SonaApi.getToken();
+    if (!token) return;
+    const payload = JSON.stringify({ token: token, ts: Date.now(), session: sess });
+    try {
+      if (window.SonaApi.isRemembered()) {
+        localStorage.setItem(SESSION_CACHE_KEY, payload);
+        sessionStorage.removeItem(SESSION_CACHE_KEY);
+      } else {
+        sessionStorage.setItem(SESSION_CACHE_KEY, payload);
+        localStorage.removeItem(SESSION_CACHE_KEY);
+      }
+    } catch (e) {}
+  }
+
+  function loadSessionCache() {
+    const token = window.SonaApi.getToken();
+    if (!token) return null;
+    try {
+      const raw = sessionStorage.getItem(SESSION_CACHE_KEY) || localStorage.getItem(SESSION_CACHE_KEY);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      if (!parsed || parsed.token !== token || !parsed.session) return null;
+      if ((Date.now() - (parsed.ts || 0)) > SESSION_CACHE_TTL_MS) return null;
+      return parsed.session;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function clearSessionCache() {
+    try {
+      sessionStorage.removeItem(SESSION_CACHE_KEY);
+      localStorage.removeItem(SESSION_CACHE_KEY);
+    } catch (e) {}
+  }
+
+  function clearWarmupTimers() {
+    PRELOAD_STATE.timers.forEach(id => clearTimeout(id));
+    PRELOAD_STATE.timers = [];
+    PRELOAD_STATE.warmedKey = '';
+  }
+
   function shortLocName(name) {
     return String(name || '').replace(/^sona\s+/i, '').trim() || String(name || '');
   }
@@ -104,14 +160,23 @@
   }
 
   function clearAllModuleCaches() {
+    clearWarmupTimers();
     clearModuleFrames();
+    ADMIN_CACHE.rbac = null;
+    ADMIN_CACHE.audit = Object.create(null);
+    PRELOAD_STATE.urls = Object.create(null);
+    PRELOAD_STATE.inFlight = Object.create(null);
     if (window.SonaBestandModule) window.SonaBestandModule.clearCache();
     if (window.SonaControllingModule) window.SonaControllingModule.clearCache();
     if (window.SonaEinkaufModule) window.SonaEinkaufModule.clearCache();
     if (window.SonaRezepturModule) window.SonaRezepturModule.clearCache();
+    if (window.SonaOperationsModule && window.SonaOperationsModule.clearCache) {
+      window.SonaOperationsModule.clearCache();
+    }
   }
 
   function lockApp(reasonMsg) {
+    clearSessionCache();
     window.SonaApi.setToken('');
     STATE.session = null;
     STATE.lastLoginSecret = '';
@@ -203,6 +268,7 @@
       }
       window.SonaApi.setToken(res.token, rememberMe);
       STATE.session = res;
+      saveSessionCache(res);
       if ($('loginPassword')) $('loginPassword').value = '';
       if (res.mustChangePassword) {
         STATE.lastLoginSecret = password;
@@ -483,6 +549,93 @@
     }
 
     renderActiveView();
+    scheduleBackgroundWarmup(s);
+  }
+
+  async function preloadEmbeddedModule(mod) {
+    const s = STATE.session;
+    const hostEl = $('osModuleFrameHost');
+    if (!s || !mod || !hostEl || mod.key === 'operations') return;
+    const frameKey = String(s.standortId || '001') + ':' + String(mod.key);
+    if (STATE.moduleFrames[frameKey] || PRELOAD_STATE.inFlight[frameKey]) return;
+
+    PRELOAD_STATE.inFlight[frameKey] = true;
+    try {
+      let launchUrl = buildDirectEmbeddedUrl(mod, s) || PRELOAD_STATE.urls[frameKey] || '';
+      if (!launchUrl) {
+        const res = await window.SonaApi.getModuleLaunchUrl(mod.key, s.standortId);
+        if (!res || !res.success || !res.launchUrl) return;
+        launchUrl = res.launchUrl;
+        PRELOAD_STATE.urls[frameKey] = launchUrl;
+      }
+      if (!STATE.session || STATE.session.standortId !== s.standortId) return;
+      if (STATE.moduleFrames[frameKey]) return;
+
+      const iframe = document.createElement('iframe');
+      iframe.className = 'os-module-frame hidden';
+      iframe.title = mod.title;
+      iframe.setAttribute('allow', 'clipboard-read; clipboard-write; fullscreen');
+      iframe.src = launchUrl;
+      STATE.moduleFrames[frameKey] = iframe;
+      hostEl.appendChild(iframe);
+    } catch (e) {
+      // Stilles Preloading darf die UI nie stören
+    } finally {
+      delete PRELOAD_STATE.inFlight[frameKey];
+    }
+  }
+
+  function prefetchView(viewKey) {
+    const s = STATE.session;
+    if (!s || !viewKey || viewKey === STATE.activeView) return;
+    if (viewKey.indexOf('ops_') === 0) {
+      if (window.SonaOperationsModule && window.SonaOperationsModule.prefetch) {
+        window.SonaOperationsModule.prefetch(s, viewKey);
+      }
+      return;
+    }
+    if (viewKey.indexOf('mod_') === 0) {
+      const modKey = viewKey.slice(4);
+      const mod = (s.ecosystemModules || []).find(m => m.key === modKey);
+      if (mod && mod.key !== 'operations') {
+        preloadEmbeddedModule(mod);
+      }
+      return;
+    }
+    if (viewKey === 'rbac' && s.permissions && s.permissions.adminMatrix) {
+      const cached = ADMIN_CACHE.rbac;
+      if (!cached || (Date.now() - cached.ts) > ADMIN_CACHE_FRESH_MS) {
+        window.SonaApi.getRbacMatrix().then(res => {
+          if (res && res.success) ADMIN_CACHE.rbac = { ts: Date.now(), data: res };
+        }).catch(() => {});
+      }
+    }
+  }
+
+  function scheduleBackgroundWarmup(session) {
+    if (!session || !session.user) return;
+    const warmKey = String(session.user.id || '') + ':' + String(session.standortId || '');
+    if (PRELOAD_STATE.warmedKey === warmKey) return;
+    clearWarmupTimers();
+    PRELOAD_STATE.warmedKey = warmKey;
+
+    const mods = session.ecosystemModules || [];
+    const hasOps = mods.some(m => m.key === 'operations');
+    if (hasOps && window.SonaOperationsModule && window.SonaOperationsModule.prefetch) {
+      PRELOAD_STATE.timers.push(setTimeout(() => {
+        if (!STATE.session || STATE.session.standortId !== session.standortId) return;
+        window.SonaOperationsModule.prefetch(STATE.session, 'ops_todo');
+        window.SonaOperationsModule.prefetch(STATE.session, 'ops_putzplan');
+      }, 350));
+    }
+
+    const iframeMods = mods.filter(m => m.key !== 'operations');
+    iframeMods.forEach((mod, idx) => {
+      PRELOAD_STATE.timers.push(setTimeout(() => {
+        if (!STATE.session || STATE.session.standortId !== session.standortId) return;
+        preloadEmbeddedModule(mod);
+      }, 800 + idx * 950));
+    });
   }
 
   function showMainContentPane() {
@@ -601,7 +754,7 @@
     window.SonaLoader.show(250);
 
     try {
-      let launchUrl = buildDirectEmbeddedUrl(mod, s);
+      let launchUrl = buildDirectEmbeddedUrl(mod, s) || PRELOAD_STATE.urls[frameKey] || '';
       if (!launchUrl) {
         const res = await window.SonaApi.getModuleLaunchUrl(mod.key, s.standortId);
         if (STATE.activeView !== 'mod_' + mod.key) {
@@ -619,6 +772,7 @@
           return;
         }
         launchUrl = res.launchUrl;
+        PRELOAD_STATE.urls[frameKey] = launchUrl;
       }
 
       if (STATE.activeView !== 'mod_' + mod.key) {
@@ -1176,7 +1330,7 @@
     await loadAuditLogTable();
   }
 
-  async function loadAuditLogTable() {
+  async function loadAuditLogTable(forceRefresh) {
     const tbody = $('auditBody');
     if (!tbody) return;
     const filter = {
@@ -1185,9 +1339,28 @@
       query: ($('auditQueryInput') && $('auditQueryInput').value) || '',
       limit: 250
     };
-    window.SonaLoader.show(600);
+    const cacheKey = JSON.stringify(filter);
+    const cached = !forceRefresh ? ADMIN_CACHE.audit[cacheKey] : null;
+    const hasFreshCache = !!(cached && (Date.now() - cached.ts) < ADMIN_CACHE_STALE_MS);
+    if (!hasFreshCache) window.SonaLoader.show(600);
     try {
-      const res = await window.SonaApi.getAuditLog(filter);
+      let res;
+      if (hasFreshCache) {
+        res = cached.data;
+        if ((Date.now() - cached.ts) > ADMIN_CACHE_FRESH_MS) {
+          window.SonaApi.getAuditLog(filter).then(fresh => {
+            if (fresh && fresh.success) {
+              ADMIN_CACHE.audit[cacheKey] = { ts: Date.now(), data: fresh };
+              if (STATE.activeView === 'audit_log') loadAuditLogTable(false);
+            }
+          }).catch(() => {});
+        }
+      } else {
+        res = await window.SonaApi.getAuditLog(filter);
+        if (res && res.success) {
+          ADMIN_CACHE.audit[cacheKey] = { ts: Date.now(), data: res };
+        }
+      }
       if (!res || !res.success) {
         tbody.innerHTML = '<tr><td colspan="6">' + esc((res && res.error) || 'Fehler beim Laden des Protokolls.') + '</td></tr>';
         return;
@@ -1222,12 +1395,30 @@
     }
   }
 
-  async function loadRbacTable() {
+  async function loadRbacTable(forceRefresh) {
     const tbody = $('rbacBody');
     if (!tbody) return;
-    window.SonaLoader.show(900);
+    const cached = !forceRefresh ? ADMIN_CACHE.rbac : null;
+    const hasFreshCache = !!(cached && (Date.now() - cached.ts) < ADMIN_CACHE_STALE_MS);
+    if (!hasFreshCache) window.SonaLoader.show(900);
     try {
-      const res = await window.SonaApi.getRbacMatrix();
+      let res;
+      if (hasFreshCache) {
+        res = cached.data;
+        if ((Date.now() - cached.ts) > ADMIN_CACHE_FRESH_MS) {
+          window.SonaApi.getRbacMatrix().then(fresh => {
+            if (fresh && fresh.success) {
+              ADMIN_CACHE.rbac = { ts: Date.now(), data: fresh };
+              if (STATE.activeView === 'rbac') loadRbacTable(false);
+            }
+          }).catch(() => {});
+        }
+      } else {
+        res = await window.SonaApi.getRbacMatrix();
+        if (res && res.success) {
+          ADMIN_CACHE.rbac = { ts: Date.now(), data: res };
+        }
+      }
       if (!res || !res.success) {
         tbody.innerHTML = '<tr><td colspan="12">' + esc((res && res.error) || 'Fehler beim Laden.') + '</td></tr>';
         return;
@@ -1336,8 +1527,9 @@
               showToast((delRes && delRes.error) || 'Löschen fehlgeschlagen.');
               return;
             }
+            ADMIN_CACHE.rbac = null;
             showToast('Profil ' + (entry.displayName || entry.userId) + ' gelöscht.');
-            await loadRbacTable();
+            await loadRbacTable(true);
           } catch (eDel) {
             showToast('Verbindungsfehler: ' + (eDel && eDel.message ? eDel.message : String(eDel)));
           } finally {
@@ -1397,11 +1589,13 @@
         showToast('Fehler: ' + ((res && res.error) || 'Speichern fehlgeschlagen'));
         return;
       }
+      ADMIN_CACHE.rbac = null;
       showToast('Rechte für ' + orig.displayName + ' gespeichert.');
       if (orig.userId === STATE.session.user.id) {
         const refreshed = await window.SonaApi.checkSession();
         if (refreshed && refreshed.success) {
           STATE.session = Object.assign({}, STATE.session, refreshed);
+          saveSessionCache(STATE.session);
           if (refreshed.mustChangePassword) {
             showForcePasswordScreen();
             return;
@@ -1410,7 +1604,7 @@
           return;
         }
       }
-      await loadRbacTable();
+      await loadRbacTable(true);
     } catch (err) {
       showToast('Fehler: ' + err.message);
     } finally {
@@ -1609,6 +1803,7 @@
         showModalErr((res && res.error) || 'Speichern fehlgeschlagen.');
         return;
       }
+      ADMIN_CACHE.rbac = null;
       $('userProfileModal').classList.add('hidden');
       if (res.oneTimePassword) {
         STATE.lastOtpResult = {
@@ -1628,6 +1823,7 @@
         const refreshed = await window.SonaApi.checkSession();
         if (refreshed && refreshed.success) {
           STATE.session = Object.assign({}, STATE.session, refreshed);
+          saveSessionCache(STATE.session);
           if (refreshed.mustChangePassword) {
             showForcePasswordScreen();
             return;
@@ -1636,7 +1832,7 @@
           return;
         }
       }
-      await loadRbacTable();
+      await loadRbacTable(true);
     } catch (err) {
       showModalErr('Verbindungsfehler: ' + err.message);
     } finally {
@@ -1872,6 +2068,26 @@
     $('osNavList').addEventListener('click', handleNavClick);
     $('osMobileNav').addEventListener('click', handleNavClick);
 
+    const handleNavPrefetch = ev => {
+      const btn = ev.target && ev.target.closest
+        ? ev.target.closest('button[data-view], button[data-quick-view], button.home-tile')
+        : null;
+      if (!btn) return;
+      let targetView = btn.dataset.view || btn.dataset.quickView || '';
+      if (!targetView) {
+        const oc = btn.getAttribute('onclick') || '';
+        const m = oc.match(/openView\(['"]([^'"]+)['"]\)/);
+        if (m) targetView = m[1];
+      }
+      if (targetView) prefetchView(targetView);
+    };
+    ['osNavList', 'osMobileNav', 'osMainContent'].forEach(id => {
+      const el = $(id);
+      if (!el) return;
+      el.addEventListener('pointerenter', handleNavPrefetch, { capture: true, passive: true });
+      el.addEventListener('touchstart', handleNavPrefetch, { passive: true });
+    });
+
     const applySidebarCollapsed = collapsed => {
       STATE.sidebarCollapsed = !!collapsed;
       const shell = $('osAppShell');
@@ -1906,6 +2122,7 @@
         }
         window.SonaApi.setToken(res.token, window.SonaApi.isRemembered());
         STATE.session = res;
+        saveSessionCache(res);
         clearAllModuleCaches();
         renderAuthenticatedShell();
         showToast('Standort aktiv: ' + res.standortName);
@@ -2038,11 +2255,37 @@
       return;
     }
 
+    const cachedSess = loadSessionCache();
+    if (cachedSess && cachedSess.user && !cachedSess.mustChangePassword) {
+      STATE.session = cachedSess;
+      window.SonaLoader.hide();
+      renderAuthenticatedShell();
+      window.SonaApi.checkSession().then(sess => {
+        if (!sess || !sess.success) {
+          lockApp((sess && sess.error) || 'Sitzung abgelaufen – bitte erneut anmelden.');
+          return;
+        }
+        const changed = !STATE.session ||
+          STATE.session.standortId !== sess.standortId ||
+          (STATE.session.user && sess.user && STATE.session.user.role !== sess.user.role) ||
+          JSON.stringify(STATE.session.ecosystemModules || []) !== JSON.stringify(sess.ecosystemModules || []);
+        STATE.session = sess;
+        saveSessionCache(sess);
+        if (sess.mustChangePassword) {
+          showForcePasswordScreen();
+          return;
+        }
+        if (changed) renderAuthenticatedShell();
+      }).catch(() => {});
+      return;
+    }
+
     window.SonaLoader.show(200);
     try {
       const sess = await window.SonaApi.checkSession();
       if (sess && sess.success) {
         STATE.session = sess;
+        saveSessionCache(sess);
         if (sess.mustChangePassword) {
           showForcePasswordScreen();
           return;
