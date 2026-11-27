@@ -1271,6 +1271,51 @@
     return rawUrl + (rawUrl.indexOf('?') === -1 ? '?' : '&') + params.join('&');
   }
 
+  async function hydrateHomeResmioToday(session) {
+    const box = $('homeResmioBox');
+    const valEl = $('homeResmioValue');
+    if (!box || !valEl || !session || !session.standortId || !window.SonaApi || !window.SonaApi.getOpsResmioToday) {
+      return;
+    }
+    const locId = String(session.standortId);
+    const todayKey = new Date().toISOString().slice(0, 10);
+    const cacheKey = 'sona_os_resmio_' + locId + '_' + todayKey;
+
+    const applySummary = function(data) {
+      if (!data || !data.success || !data.configured) {
+        box.classList.add('hidden');
+        return;
+      }
+      const resCount = Number(data.reservations || 0);
+      const guestCount = Number(data.guests || 0);
+      valEl.textContent = resCount + ' Res. · ' + guestCount + ' Pers.';
+      box.title = 'Heute: ' + resCount + ' Reservierungen, ' + guestCount + ' Personen';
+      box.classList.remove('hidden');
+    };
+
+    try {
+      const cachedRaw = sessionStorage.getItem(cacheKey);
+      if (cachedRaw) {
+        const parsed = JSON.parse(cachedRaw);
+        if (parsed && parsed.ts && (Date.now() - parsed.ts < 120000) && parsed.data) {
+          applySummary(parsed.data);
+          return;
+        }
+      }
+    } catch (e) {}
+
+    try {
+      const res = await window.SonaApi.getOpsResmioToday(locId);
+      if (STATE.session && String(STATE.session.standortId) !== locId) return;
+      applySummary(res);
+      if (res && res.success) {
+        try {
+          sessionStorage.setItem(cacheKey, JSON.stringify({ ts: Date.now(), data: res }));
+        } catch (eStore) {}
+      }
+    } catch (e) {}
+  }
+
   function renderOverview() {
     const s = STATE.session;
     const mods = s.ecosystemModules || [];
@@ -1344,10 +1389,17 @@
 
     const routineSectionHtml = routineLinksHtml
       ? '<section class="home-section-card">' +
-          '<div class="card-head" style="margin-bottom:2px;">' +
+          '<div class="card-head home-routine-head" style="margin-bottom:2px;">' +
             '<div>' +
               '<div class="kicker">Tägliche Routine</div>' +
               '<h3>Routineaufgaben</h3>' +
+            '</div>' +
+            '<div id="homeResmioBox" class="home-resmio-box hidden" aria-live="polite" title="Tagesaktuelle Reservierungen">' +
+              '<span class="home-resmio-icon" aria-hidden="true">📅</span>' +
+              '<div class="home-resmio-meta">' +
+                '<div class="home-resmio-label">Heute · Reservierungen</div>' +
+                '<div id="homeResmioValue" class="home-resmio-value tabular">—</div>' +
+              '</div>' +
             '</div>' +
           '</div>' +
           '<div class="home-routine-links">' + routineLinksHtml + '</div>' +
@@ -1426,6 +1478,9 @@
     if (window.SonaOperationsModule) {
       if ((canPutzplan || canTodo) && window.SonaOperationsModule.hydrateRoutineProgress) {
         window.SonaOperationsModule.hydrateRoutineProgress(s);
+      }
+      if (routineSectionHtml) {
+        hydrateHomeResmioToday(s);
       }
       if (canNews && window.SonaOperationsModule.renderNewsBoardInto) {
         window.SonaOperationsModule.renderNewsBoardInto($('homeNewsBoardSlot'), s, false);
