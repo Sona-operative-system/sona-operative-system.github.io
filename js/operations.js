@@ -213,7 +213,33 @@
       OPS_STATE.selectedPeriod = res.periodKey || chosenPeriod || '';
       const monthLabel = res.monthLabel || 'Aktuelle Periode';
       const periods = Array.isArray(res.availablePeriods) ? res.availablePeriods : [];
-      const schwund = res.schwund || { totalEur: 0, count: 0, byStation: [], byVerschulden: [], byReason: [] };
+      const schwund = res.schwund || { totalEur: 0, count: 0, byStation: [], byCategory: [], byVerschulden: [], byReason: [] };
+      const schwundByCategory = (Array.isArray(schwund.byCategory) && schwund.byCategory.length)
+        ? schwund.byCategory
+        : (function() {
+            const agg = {
+              'Personalverbrauch': { eur: 0, count: 0 },
+              'Marketing': { eur: 0, count: 0 },
+              'Sonstiger Schwund': { eur: 0, count: 0 }
+            };
+            (schwund.byReason || []).forEach(function(item) {
+              const raw = String((item && item.label) || '').trim();
+              const low = raw.toLowerCase();
+              let cat = 'Sonstiger Schwund';
+              if (/^4\b|^4\./.test(raw) || low.indexOf('personal') !== -1 || low.indexOf('verkostung') !== -1 || low.indexOf('probe') !== -1 || low.indexOf('mitarbeiter') !== -1) {
+                cat = 'Personalverbrauch';
+              } else if (/^5\b|^5\./.test(raw) || low.indexOf('marketing') !== -1 || low.indexOf('influencer') !== -1 || low.indexOf('werbung') !== -1 || /\bpr\b/.test(low)) {
+                cat = 'Marketing';
+              }
+              agg[cat].eur += Number(item && item.eur) || 0;
+              agg[cat].count += Number(item && item.count) || 0;
+            });
+            const tot = Number(schwund.totalEur) || 0;
+            return Object.keys(agg).map(function(k) {
+              const eur = Math.round(agg[k].eur * 100) / 100;
+              return { label: k, eur: eur, sharePct: tot > 0 ? Math.round((eur / tot) * 1000) / 10 : 0, count: agg[k].count };
+            }).sort(function(a, b) { return b.eur - a.eur || b.count - a.count; });
+          })();
       const bruch = res.bruch || { totalEur: 0, pieces: 0, count: 0, byStation: [], byVerschulden: [] };
       const totalLossEur = Math.round(((Number(schwund.totalEur) || 0) + (Number(bruch.totalEur) || 0)) * 100) / 100;
 
@@ -265,9 +291,9 @@
             '</tbody></table></div>' +
           '</div>' +
           '<div class="card">' +
-            '<div class="card-head"><div><div class="kicker">Schwund-Auswertung</div><h3>Schwund nach Verschulden</h3></div></div>' +
-            '<div class="table-wrap"><table><thead><tr><th>Verschuldensart</th><th>Verlust (Netto)</th><th>Anteil</th><th>Buchungen</th></tr></thead><tbody>' +
-              renderBreakdownRows(schwund.byVerschulden, false) +
+            '<div class="card-head"><div><div class="kicker">Schwund-Auswertung</div><h3>Schwund nach Grund</h3></div></div>' +
+            '<div class="table-wrap"><table><thead><tr><th>Grund / Kategorie</th><th>Verlust (Netto)</th><th>Anteil</th><th>Buchungen</th></tr></thead><tbody>' +
+              renderBreakdownRows(schwundByCategory, false) +
             '</tbody></table></div>' +
           '</div>' +
         '</div>' +
@@ -288,9 +314,9 @@
         '</div>' +
 
         '<div class="card">' +
-          '<div class="card-head"><div><div class="kicker">Schwund-Auswertung</div><h3>Top Verlustgründe (SCHWUND_NEU)</h3></div></div>' +
-          '<div class="table-wrap"><table><thead><tr><th>Verlustgrund</th><th>Verlust (Netto)</th><th>Anteil</th><th>Buchungen</th></tr></thead><tbody>' +
-            renderBreakdownRows(schwund.byReason, false) +
+          '<div class="card-head"><div><div class="kicker">Schwund-Auswertung</div><h3>Top 5 Verlust-Artikel</h3></div></div>' +
+          '<div class="table-wrap"><table><thead><tr><th>Artikel</th><th>Verlust (Netto)</th><th>Anteil</th><th>Buchungen</th></tr></thead><tbody>' +
+            renderBreakdownRows(Array.isArray(schwund.topItems) ? schwund.topItems : [], false) +
           '</tbody></table></div>' +
         '</div>';
 
