@@ -1572,36 +1572,158 @@
     return d.toISOString().slice(0, 10);
   }
 
-  function renderNewsCardsHtml(entries) {
+  function formatTsShortDe(isoStr) {
+    const s = String(isoStr || '').trim();
+    if (!s) return '–';
+    const d = new Date(s);
+    if (isNaN(d.getTime())) return s;
+    return d.toLocaleString('de-DE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+  }
+
+  function canViewOpsActivity(session) {
+    if (!session || !session.permissions) return false;
+    if (session.permissions.adminMatrix) return true;
+    const role = String((session.user && session.user.role) || '').toUpperCase();
+    if (role === 'ADMIN') return true;
+    const opTabs = session.permissions.tabPermissions && session.permissions.tabPermissions.operations;
+    if (Array.isArray(opTabs)) {
+      return opTabs.indexOf('ops_verlauf') !== -1;
+    }
+    const lvl = String(session.permissions.accessLevel || '').toUpperCase();
+    return lvl === 'ADMIN' || lvl === 'WRITE' || ['FB_MANAGER', 'SERVICELEITUNG', 'SERVICECHEF', 'KUECHENCHEF', 'BARCHEF'].indexOf(role) !== -1;
+  }
+
+  function applyRoutineCardState(cardEl, textEl, done, total) {
+    if (!cardEl || !textEl) return;
+    cardEl.classList.remove('routine-state-low', 'routine-state-mid', 'routine-state-good');
+    const t = Number(total) || 0;
+    const d = Number(done) || 0;
+    if (t <= 0) {
+      textEl.textContent = '';
+      return;
+    }
+    const pct = Math.round((d / t) * 100);
+    textEl.textContent = 'Heute: ' + d + ' / ' + t + ' erledigt (' + pct + ' %)';
+    if (d <= 0) {
+      cardEl.classList.add('routine-state-low');
+    } else if (pct >= 80) {
+      cardEl.classList.add('routine-state-good');
+    } else {
+      cardEl.classList.add('routine-state-mid');
+    }
+  }
+
+  function hydrateRoutineProgress(session) {
+    if (!session || !session.standortId) return;
+    const sid = session.standortId;
+    const today = todayIsoLocal();
+
+    const putzCard = document.getElementById('homeRoutinePutzCard');
+    const putzTxt = document.getElementById('homeRoutinePutzProgress');
+    if (putzCard && putzTxt) {
+      const putzKey = 'putz::' + sid + '::' + today;
+      fetchOpsSwr(putzKey, function() { return window.SonaApi.getOpsPutzplanDay(sid, today); }, false)
+        .then(function(r) {
+          if (r && r.success && r.status !== 'IN_VORBEREITUNG' && r.status !== 'KEINE_ZEILE') {
+            applyRoutineCardState(document.getElementById('homeRoutinePutzCard'), document.getElementById('homeRoutinePutzProgress'), r.doneCount, r.totalCount);
+          }
+        }).catch(function() {});
+    }
+
+    const todoCard = document.getElementById('homeRoutineTodoCard');
+    const todoTxt = document.getElementById('homeRoutineTodoProgress');
+    if (todoCard && todoTxt) {
+      const todoKey = 'todo::' + sid + '::' + today;
+      fetchOpsSwr(todoKey, function() { return window.SonaApi.getOpsTodoDay(sid, today, false); }, false)
+        .then(function(r) {
+          if (r && r.success && r.status !== 'IN_VORBEREITUNG') {
+            const tasks = Array.isArray(r.tasks) ? r.tasks : [];
+            const total = r.totalCount !== undefined ? r.totalCount : tasks.length;
+            const done = r.doneCount !== undefined ? r.doneCount : tasks.filter(function(x) { return !!x.done; }).length;
+            applyRoutineCardState(document.getElementById('homeRoutineTodoCard'), document.getElementById('homeRoutineTodoProgress'), done, total);
+          }
+        }).catch(function() {});
+    }
+  }
+
+  function renderNewsCardsHtml(entries, opts) {
+    const o = opts || {};
     if (!entries || !entries.length) {
-      return '<div class="card"><p class="module-desc" style="margin:0;">Aktuell liegen keine neuen Meldungen oder Dokumente für diesen Standort vor.</p></div>';
+      return '<div class="card"><p class="module-desc" style="margin:0;">Aktuell liegen keine neuen Meldungen oder Dokumente vor.</p></div>';
     }
     return '<div class="home-news-grid">' +
       entries.map(function(item) {
         const meta = newsTypeLabel(item.typ);
         const rangeTxt = item.typ === 'DAUERHAFT'
-          ? 'Dauerhaft aktiv'
-          : ('Gültig bis ' + formatIsoShortDe(item.gueltigBis || item.gueltigAb));
+          ? 'Dauerhaft'
+          : ('Bis ' + formatIsoShortDe(item.gueltigBis || item.gueltigAb));
         const docHtml = item.docUrl
           ? '<a class="news-doc-link" href="' + esc(item.docUrl) + '" target="_blank" rel="noopener noreferrer">📄 ' + esc(item.docName || 'Dokument öffnen') + ' ↗</a>'
+          : '';
+        const readActionHtml = o.allowReadAck
+          ? (item.readByMe
+              ? '<span class="news-read-done">✓ Gelesen</span>'
+              : '<button type="button" class="btn btn-sm news-read-btn" data-news-read-id="' + esc(item.id) + '">Gelesen ✓</button>')
+          : '';
+        const readersHtml = (o.showReaders && Array.isArray(item.readers))
+          ? '<details class="news-readers-details">' +
+              '<summary>Gelesen: ' + esc(item.readCount || item.readers.length) + '</summary>' +
+              (item.readers.length
+                ? '<ul class="news-readers-list">' + item.readers.map(function(rd) {
+                    return '<li><b>' + esc(rd.name || 'Mitarbeiter') + '</b>' + (rd.email ? ' (' + esc(rd.email) + ')' : '') + ' · ' + esc(formatTsShortDe(rd.readAt)) + '</li>';
+                  }).join('') + '</ul>'
+                : '<div style="margin-top:4px;opacity:0.75;">Noch keine Bestätigungen.</div>') +
+            '</details>'
           : '';
         return '<article class="home-news-card' + (item.pinned ? ' is-pinned' : '') + '">' +
           '<div>' +
             '<div class="home-news-meta">' +
               '<span class="badge ' + meta.cls + '">' + esc(meta.label) + '</span>' +
               (item.bereich && item.bereich !== 'ALLE' ? '<span class="badge">' + esc(item.bereich) + '</span>' : '') +
-              (item.pinned ? '<span class="badge badge-warn">Angeheftet</span>' : '') +
+              (item.pinned ? '<span class="badge badge-warn">Wichtig</span>' : '') +
             '</div>' +
             '<h4 class="home-news-title">' + esc(item.titel) + '</h4>' +
             (item.inhalt ? '<div class="home-news-body">' + esc(item.inhalt) + '</div>' : '') +
+            readersHtml +
           '</div>' +
           '<div class="home-news-footer">' +
             '<span>' + esc(item.autor || 'Leitung') + ' · ' + esc(rangeTxt) + '</span>' +
-            docHtml +
+            '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">' +
+              docHtml +
+              readActionHtml +
+            '</div>' +
           '</div>' +
         '</article>';
       }).join('') +
     '</div>';
+  }
+
+  function wireNewsReadButtons(rootEl, session) {
+    if (!rootEl || !session) return;
+    rootEl.querySelectorAll('[data-news-read-id]').forEach(function(btn) {
+      btn.addEventListener('click', async function() {
+        const nid = btn.dataset.newsReadId;
+        if (!nid) return;
+        btn.disabled = true;
+        btn.textContent = '✓ Gelesen';
+        try {
+          const r = await window.SonaApi.markOpsNewsRead(session.standortId, nid);
+          if (r && r.success) {
+            invalidateOpsCache('news::' + session.standortId);
+            const span = document.createElement('span');
+            span.className = 'news-read-done';
+            span.textContent = '✓ Gelesen';
+            btn.replaceWith(span);
+          } else {
+            btn.disabled = false;
+            btn.textContent = 'Gelesen ✓';
+          }
+        } catch (e) {
+          btn.disabled = false;
+          btn.textContent = 'Gelesen ✓';
+        }
+      });
+    });
   }
 
   async function renderNewsBoardInto(targetEl, session, forceRefresh) {
@@ -1632,7 +1754,8 @@
         targetEl.innerHTML = '<div class="card"><p class="module-desc" style="margin:0;">Infos konnten nicht geladen werden.</p></div>';
         return;
       }
-      targetEl.innerHTML = renderNewsCardsHtml(res.activeEntries || []);
+      targetEl.innerHTML = renderNewsCardsHtml(res.activeEntries || [], { allowReadAck: true, showReaders: false });
+      wireNewsReadButtons(targetEl, session);
     } catch (err) {
       if (document.body.contains(targetEl)) {
         targetEl.innerHTML = '<div class="card"><p class="module-desc" style="margin:0;">Aktuell keine Verbindung zum Infoboard.</p></div>';
@@ -1792,7 +1915,7 @@
         : editorHtml) +
       '<div class="card" style="margin-bottom:18px;">' +
         '<div class="card-head"><div><div class="kicker">Vorschau Startseite</div><h3>Aktive Meldungen („Was gibt\'s Neues?“)</h3></div></div>' +
-        renderNewsCardsHtml(activeEntries) +
+        renderNewsCardsHtml(activeEntries, { allowReadAck: false, showReaders: !!(res && res.canViewActivity) || canViewOpsActivity(session) }) +
       '</div>' +
       '<div class="card">' +
         '<div class="card-head"><div><div class="kicker">Verlauf &amp; Verwaltung</div><h3>Alle Einträge (' + esc(allEntries.length) + ')</h3></div></div>' +
@@ -2258,6 +2381,7 @@
     openExternalTab: openExternalTab,
     clearCache: clearCache,
     prefetch: prefetch,
+    hydrateRoutineProgress: hydrateRoutineProgress,
     renderNewsBoardInto: renderNewsBoardInto,
     render86BoardInto: render86BoardInto,
     renderAuswertungInto: function(targetEl, session) {
@@ -2296,12 +2420,6 @@
           '<button type="button" class="home-tile" data-ops-nav="ops_tagesuebersicht">' +
             '<div class="home-tile-head"><h4 class="home-tile-title">Tagesübersicht &amp; Infos</h4><span class="home-tile-arrow">→</span></div>' +
             '<p class="home-tile-desc">Routineaufgaben, Neuerungen &amp; Dokumente verwalten</p>' +
-          '</button>'
-        );
-        cards.push(
-          '<button type="button" class="home-tile" data-ops-nav="ops_86">' +
-            '<div class="home-tile-head"><h4 class="home-tile-title">86-Liste</h4><span class="home-tile-arrow">→</span></div>' +
-            '<p class="home-tile-desc">Ausverkaufte Artikel eintragen &amp; täglich prüfen</p>' +
           '</button>'
         );
         if (canSchwundInput) {
@@ -2348,10 +2466,16 @@
             '</button>'
           );
         }
+        cards.push(
+          '<button type="button" class="home-tile" data-ops-nav="ops_86">' +
+            '<div class="home-tile-head"><h4 class="home-tile-title">7. 86-Liste</h4><span class="home-tile-arrow">→</span></div>' +
+            '<p class="home-tile-desc">Ausverkaufte Artikel eintragen &amp; täglich prüfen</p>' +
+          '</button>'
+        );
 
         container.innerHTML =
           '<div class="pillar-section">' +
-            '<div class="pillar-head"><h3>Operations · ' + esc(session.standortName) + '</h3></div>' +
+            '<div class="pillar-head"><h3>Operations</h3></div>' +
             '<div class="grid-3">' + cards.join('') + '</div>' +
           '</div>';
 
@@ -2369,13 +2493,21 @@
         });
       };
 
-      const renderSectionWrapper = function(title) {
+      const renderSectionWrapper = function(title, sectionKeyForLog) {
+        const showActivity = canViewOpsActivity(session);
+        const activityHtml = showActivity
+          ? '<details id="opsActivityDetails" class="ops-activity-details">' +
+              '<summary>Verlauf &amp; Details (Wer hat was wann eingetragen?)</summary>' +
+              '<div id="opsActivityBody" class="ops-activity-body"><p class="module-desc" style="margin:0;">Klicken zum Laden …</p></div>' +
+            '</details>'
+          : '';
         container.innerHTML =
           '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px;flex-wrap:wrap;">' +
             '<button type="button" id="btnOpsBackHome" class="btn btn-sm">← Zurück zu Operations</button>' +
-            '<span class="kicker">' + esc(title) + ' · ' + esc(session.standortName) + '</span>' +
+            '<span class="kicker">' + esc(title) + '</span>' +
           '</div>' +
-          '<div id="opsTabPane"></div>';
+          '<div id="opsTabPane"></div>' +
+          activityHtml;
         const backBtn = document.getElementById('btnOpsBackHome');
         if (backBtn) {
           backBtn.addEventListener('click', function() {
@@ -2386,16 +2518,55 @@
             }
           });
         }
+        const detailsEl = document.getElementById('opsActivityDetails');
+        if (detailsEl) {
+          let loadedOnce = false;
+          detailsEl.addEventListener('toggle', async function() {
+            if (!detailsEl.open || loadedOnce) return;
+            loadedOnce = true;
+            const bodyEl = document.getElementById('opsActivityBody');
+            if (!bodyEl) return;
+            bodyEl.innerHTML = '<p class="module-desc" style="margin:0;">Lade Verlauf …</p>';
+            try {
+              const aRes = await window.SonaApi.getOpsActivityLog(session.standortId, sectionKeyForLog || 'all', 35);
+              if (!document.body.contains(bodyEl)) return;
+              if (!aRes || !aRes.success) {
+                bodyEl.innerHTML = '<p class="module-desc" style="margin:0;">' + esc((aRes && aRes.error) || 'Verlauf noch nicht aktiv (Backend-@sync erforderlich).') + '</p>';
+                return;
+              }
+              const list = Array.isArray(aRes.entries) ? aRes.entries : [];
+              if (!list.length) {
+                bodyEl.innerHTML = '<p class="module-desc" style="margin:0;">Noch keine Einträge im Verlauf für diesen Bereich.</p>';
+                return;
+              }
+              bodyEl.innerHTML =
+                '<div class="table-wrap"><table><thead><tr><th>Zeitpunkt</th><th>Benutzer</th><th>Aktion</th><th>Detail</th></tr></thead><tbody>' +
+                  list.map(function(it) {
+                    return '<tr>' +
+                      '<td style="white-space:nowrap;font-size:11.5px;color:var(--os-silk);">' + esc(formatTsShortDe(it.timestamp)) + '</td>' +
+                      '<td style="font-size:12px;"><b>' + esc(it.name || 'System') + '</b>' + (it.email ? '<div class="rbac-user-email">' + esc(it.email) + '</div>' : '') + '</td>' +
+                      '<td style="white-space:nowrap;font-size:11px;">' + esc(it.aktion) + '</td>' +
+                      '<td style="font-size:12px;color:var(--os-silk);">' + esc(it.detail || '—') + '</td>' +
+                    '</tr>';
+                  }).join('') +
+                '</tbody></table></div>';
+            } catch (eAct) {
+              if (document.body.contains(bodyEl)) {
+                bodyEl.innerHTML = '<p class="module-desc" style="margin:0;">Verlauf konnte nicht geladen werden.</p>';
+              }
+            }
+          });
+        }
       };
 
       if (activeSection === 'tagesuebersicht') {
-        renderSectionWrapper('Tagesübersicht');
+        renderSectionWrapper('Tagesübersicht', 'tagesuebersicht');
         loadTagesuebersichtTab(session, false);
         return;
       }
 
       if (activeSection === '86') {
-        renderSectionWrapper('86-Liste (Ausverkauft)');
+        renderSectionWrapper('86-Liste', '86');
         load86Tab(session, false);
         return;
       }
@@ -2405,7 +2576,7 @@
           container.innerHTML = '<div class="card"><p class="module-desc">Kein Zugriff auf Reklamation und Beschwerden.</p></div>';
           return;
         }
-        renderSectionWrapper('Reklamation und Beschwerden');
+        renderSectionWrapper('Reklamation und Beschwerden', 'reklamation');
         loadReklamationTab(session, OPS_STATE.selectedMonth);
         return;
       }
@@ -2415,19 +2586,19 @@
           container.innerHTML = '<div class="card"><p class="module-desc">Kein Zugriff auf Mitarbeiter Ranking.</p></div>';
           return;
         }
-        renderSectionWrapper('Mitarbeiter Ranking');
+        renderSectionWrapper('Mitarbeiter Ranking', 'ranking');
         loadRatingTab(session);
         return;
       }
 
       if (activeSection === 'todo') {
-        renderSectionWrapper('To-Do-Liste');
+        renderSectionWrapper('To-Do-Liste', 'todo');
         loadTodoTab(session, OPS_STATE.selectedTodoDate || todayIsoLocal(), false);
         return;
       }
 
       if (activeSection === 'putzplan') {
-        renderSectionWrapper('Putzplan');
+        renderSectionWrapper('Putzplan', 'putzplan');
         loadPutzplanTab(session, OPS_STATE.selectedPutzplanDate || todayIsoLocal());
         return;
       }

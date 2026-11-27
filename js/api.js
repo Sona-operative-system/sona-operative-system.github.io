@@ -23,7 +23,8 @@
     os_ops_todo_day: true,
     os_ops_putzplan_day: true,
     os_ops_news_list: true,
-    os_ops_86_list: true
+    os_ops_86_list: true,
+    os_ops_activity_log: true
   };
 
   function setUnauthorizedHandler(fn) {
@@ -327,6 +328,15 @@
     deleteOpsNews: (standortId, newsId) => callPost('os_ops_news_delete', {
       standortId: standortId,
       newsId: newsId
+    }),
+    markOpsNewsRead: (standortId, newsId) => callPost('os_ops_news_read', {
+      standortId: standortId,
+      newsId: newsId
+    }),
+    getOpsActivityLog: (standortId, section, limit) => callPost('os_ops_activity_log', {
+      standortId: standortId,
+      section: section || 'all',
+      limit: limit || 35
     }),
     getOps86List: (standortId) => callPost('os_ops_86_list', {
       standortId: standortId

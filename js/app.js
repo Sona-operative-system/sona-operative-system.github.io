@@ -404,8 +404,8 @@
     if (kwEl) {
       kwEl.textContent = 'KW ' + String(getIsoWeekNumber(now)).padStart(2, '0');
     }
-    if (locEl && session) {
-      locEl.textContent = session.standortName || '';
+    if (locEl) {
+      locEl.textContent = '';
     }
   }
 
@@ -433,9 +433,6 @@
       if (hasOpTab('tagesuebersicht')) {
         opsNavItems.push({ key: 'ops_tagesuebersicht', title: 'Tagesübersicht', pillar: 'OPERATIONS' });
       }
-      if (hasOpTab('liste86')) {
-        opsNavItems.push({ key: 'ops_86', title: '86-Liste', pillar: 'OPERATIONS' });
-      }
       if (hasOpTab('schwund_eingabe') && opsMod.schwundUrl) {
         opsNavItems.push({ key: 'ops_schwund', title: 'Schwund', pillar: 'OPERATIONS', externalUrl: buildQuickOpsUrl(opsMod.schwundUrl, s) });
       }
@@ -453,6 +450,9 @@
       }
       if (hasOpTab('mitarbeiterbewertung')) {
         opsNavItems.push({ key: 'ops_ranking', title: 'Mitarbeiter Ranking', pillar: 'OPERATIONS' });
+      }
+      if (hasOpTab('liste86')) {
+        opsNavItems.push({ key: 'ops_86', title: '86-Liste', pillar: 'OPERATIONS' });
       }
     }
 
@@ -848,30 +848,37 @@
 
     const routineLinksHtml =
       (canPutzplan
-        ? '<button type="button" class="home-routine-link home-quick-view-btn" data-quick-view="ops_putzplan">' +
-            '<div><div class="home-routine-link-title">Putzplan</div><div class="home-routine-link-sub">Tägliche &amp; wöchentliche Reinigung abhaken</div></div>' +
+        ? '<button type="button" id="homeRoutinePutzCard" class="home-routine-link home-quick-view-btn" data-quick-view="ops_putzplan">' +
+            '<div>' +
+              '<div class="home-routine-link-title">Putzplan</div>' +
+              '<div class="home-routine-link-sub">Tägliche &amp; wöchentliche Reinigung</div>' +
+              '<span id="homeRoutinePutzProgress" class="routine-mini-status"></span>' +
+            '</div>' +
             '<span>→</span>' +
           '</button>'
         : '') +
       (canTodo
-        ? '<button type="button" class="home-routine-link home-quick-view-btn" data-quick-view="ops_todo">' +
-            '<div><div class="home-routine-link-title">To-Do-Liste</div><div class="home-routine-link-sub">Checkliste für Früh- &amp; Spätschicht</div></div>' +
+        ? '<button type="button" id="homeRoutineTodoCard" class="home-routine-link home-quick-view-btn" data-quick-view="ops_todo">' +
+            '<div>' +
+              '<div class="home-routine-link-title">To-Do-Liste</div>' +
+              '<div class="home-routine-link-sub">Checkliste für Früh- &amp; Spätschicht</div>' +
+              '<span id="homeRoutineTodoProgress" class="routine-mini-status"></span>' +
+            '</div>' +
             '<span>→</span>' +
           '</button>'
         : '');
 
     const routineSectionHtml =
       '<section class="home-routine-card">' +
-        '<div class="card-head" style="margin-bottom:4px;">' +
+        '<div class="card-head" style="margin-bottom:2px;">' +
           '<div>' +
-            '<div class="kicker">1. Tägliche Basis · ' + esc(s.standortName) + '</div>' +
+            '<div class="kicker">1. Tägliche Routine</div>' +
             '<h3>Routineaufgaben</h3>' +
           '</div>' +
         '</div>' +
-        '<p class="module-desc" style="margin:0;">Bitte zu Schichtbeginn und Schichtende prüfen und direkt abhaken.</p>' +
         (routineLinksHtml
           ? '<div class="home-routine-links">' + routineLinksHtml + '</div>'
-          : '<p class="module-desc" style="margin-top:8px;">Für deinen Benutzer sind aktuell keine Routine-Links freigegeben.</p>') +
+          : '<p class="module-desc" style="margin-top:8px;">Aktuell keine Routine-Links freigegeben.</p>') +
       '</section>';
 
     const newsSectionHtml =
@@ -879,7 +886,7 @@
         '<div class="pillar-head" style="align-items:center;">' +
           '<div><div class="kicker">2. Team-Briefing &amp; Dokumente</div><h3>Was gibt\'s Neues?</h3></div>' +
           (canManageNews
-            ? '<button type="button" class="btn btn-sm home-quick-view-btn" data-quick-view="ops_tagesuebersicht">+ Info / Dokument eintragen</button>'
+            ? '<button type="button" class="btn btn-sm home-quick-view-btn" data-quick-view="ops_tagesuebersicht">+ Info / Dokument</button>'
             : '') +
         '</div>' +
         '<div id="homeNewsBoardSlot"></div>' +
@@ -889,11 +896,11 @@
       '<section class="home-86-card">' +
         '<div class="card-head" style="margin-bottom:4px;">' +
           '<div>' +
-            '<div class="kicker">3. Aktuell nicht verfügbar · ' + esc(s.standortName) + '</div>' +
+            '<div class="kicker">3. Aktuell nicht verfügbar</div>' +
             '<h3>86-Liste</h3>' +
           '</div>' +
           (opsMod
-            ? '<button type="button" class="btn btn-sm home-quick-view-btn" data-quick-view="ops_86">+ 86 eintragen / prüfen</button>'
+            ? '<button type="button" class="btn btn-sm home-quick-view-btn" data-quick-view="ops_86">+ 86 verwalten</button>'
             : '') +
         '</div>' +
         '<div id="home86BoardSlot"></div>' +
@@ -916,11 +923,16 @@
         list86SectionHtml +
       '</div>';
 
-    if (window.SonaOperationsModule && window.SonaOperationsModule.renderNewsBoardInto) {
-      window.SonaOperationsModule.renderNewsBoardInto($('homeNewsBoardSlot'), s, false);
-    }
-    if (window.SonaOperationsModule && window.SonaOperationsModule.render86BoardInto) {
-      window.SonaOperationsModule.render86BoardInto($('home86BoardSlot'), s, false);
+    if (window.SonaOperationsModule) {
+      if (window.SonaOperationsModule.hydrateRoutineProgress) {
+        window.SonaOperationsModule.hydrateRoutineProgress(s);
+      }
+      if (window.SonaOperationsModule.renderNewsBoardInto) {
+        window.SonaOperationsModule.renderNewsBoardInto($('homeNewsBoardSlot'), s, false);
+      }
+      if (window.SonaOperationsModule.render86BoardInto) {
+        window.SonaOperationsModule.render86BoardInto($('home86BoardSlot'), s, false);
+      }
     }
 
     container.querySelectorAll('.home-quick-ops-btn').forEach(btn => {
