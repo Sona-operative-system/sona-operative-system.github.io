@@ -874,11 +874,22 @@
           : '<p class="module-desc" style="margin-top:8px;">Für deinen Benutzer sind aktuell keine Routine-Links freigegeben.</p>') +
       '</section>';
 
+    const newsSectionHtml =
+      '<section class="pillar-section">' +
+        '<div class="pillar-head" style="align-items:center;">' +
+          '<div><div class="kicker">2. Team-Briefing &amp; Dokumente</div><h3>Was gibt\'s Neues?</h3></div>' +
+          (canManageNews
+            ? '<button type="button" class="btn btn-sm home-quick-view-btn" data-quick-view="ops_tagesuebersicht">+ Info / Dokument eintragen</button>'
+            : '') +
+        '</div>' +
+        '<div id="homeNewsBoardSlot"></div>' +
+      '</section>';
+
     const list86SectionHtml =
       '<section class="home-86-card">' +
         '<div class="card-head" style="margin-bottom:4px;">' +
           '<div>' +
-            '<div class="kicker">2. Aktuell nicht verfügbar · ' + esc(s.standortName) + '</div>' +
+            '<div class="kicker">3. Aktuell nicht verfügbar · ' + esc(s.standortName) + '</div>' +
             '<h3>86-Liste</h3>' +
           '</div>' +
           (opsMod
@@ -886,17 +897,6 @@
             : '') +
         '</div>' +
         '<div id="home86BoardSlot"></div>' +
-      '</section>';
-
-    const newsSectionHtml =
-      '<section class="pillar-section">' +
-        '<div class="pillar-head" style="align-items:center;">' +
-          '<div><div class="kicker">3. Team-Briefing &amp; Dokumente</div><h3>Was gibt\'s Neues?</h3></div>' +
-          (canManageNews
-            ? '<button type="button" class="btn btn-sm home-quick-view-btn" data-quick-view="ops_tagesuebersicht">+ Info / Dokument eintragen</button>'
-            : '') +
-        '</div>' +
-        '<div id="homeNewsBoardSlot"></div>' +
       '</section>';
 
     container.innerHTML =
@@ -912,15 +912,15 @@
       '</div>' +
       '<div class="home-info-stack">' +
         routineSectionHtml +
-        list86SectionHtml +
         newsSectionHtml +
+        list86SectionHtml +
       '</div>';
 
-    if (window.SonaOperationsModule && window.SonaOperationsModule.render86BoardInto) {
-      window.SonaOperationsModule.render86BoardInto($('home86BoardSlot'), s, false);
-    }
     if (window.SonaOperationsModule && window.SonaOperationsModule.renderNewsBoardInto) {
       window.SonaOperationsModule.renderNewsBoardInto($('homeNewsBoardSlot'), s, false);
+    }
+    if (window.SonaOperationsModule && window.SonaOperationsModule.render86BoardInto) {
+      window.SonaOperationsModule.render86BoardInto($('home86BoardSlot'), s, false);
     }
 
     container.querySelectorAll('.home-quick-ops-btn').forEach(btn => {
@@ -933,7 +933,7 @@
     container.querySelectorAll('.home-quick-view-btn').forEach(btn => {
       btn.addEventListener('click', () => {
         if (btn.dataset.quickView) {
-          openView(btn.dataset.quickView);
+          window.SonaApp.openView(btn.dataset.quickView);
         }
       });
     });
