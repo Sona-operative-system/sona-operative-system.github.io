@@ -1816,6 +1816,7 @@
 
     const todayIso = (res && res.todayIso) || todayIsoLocal();
     const canManage = !!(res && res.canManage);
+    const canDelete = (res && res.canDelete !== undefined) ? !!res.canDelete : canManage;
     const activeEntries = (res && res.success && Array.isArray(res.activeEntries)) ? res.activeEntries : [];
     const allEntries = (res && res.success && Array.isArray(res.allEntries)) ? res.allEntries : [];
     const backendPending = !!(res && !res.success && String(res.error || '').indexOf('Unbekannte Aktion') !== -1);
@@ -1905,7 +1906,7 @@
     ) : '';
 
     const listRowsHtml = allEntries.length
-      ? '<div class="table-wrap"><table><thead><tr><th>Status</th><th>Typ</th><th>Titel &amp; Info</th><th>Dokument</th><th>Gültigkeit</th>' + (canManage ? '<th>Aktion</th>' : '') + '</tr></thead><tbody>' +
+      ? '<div class="table-wrap"><table><thead><tr><th>Status</th><th>Typ</th><th>Titel &amp; Info</th><th>Dokument</th><th>Gültigkeit</th>' + (canDelete ? '<th>Aktion</th>' : '') + '</tr></thead><tbody>' +
           allEntries.map(function(it) {
             const meta = newsTypeLabel(it.typ);
             const statusBadge = it.isActive
@@ -1923,7 +1924,7 @@
               '<td><b>' + esc(it.titel) + '</b>' + (it.inhalt ? '<div style="font-size:12px;color:var(--os-silk);margin-top:2px;max-width:420px;white-space:pre-wrap;">' + esc(it.inhalt.slice(0, 200)) + (it.inhalt.length > 200 ? '…' : '') + '</div>' : '') + '</td>' +
               '<td>' + docCol + '</td>' +
               '<td style="white-space:nowrap;font-size:12px;">' + esc(rangeCol) + '</td>' +
-              (canManage ? '<td><button type="button" class="btn btn-danger btn-sm ops-news-del-btn" data-news-id="' + esc(it.id) + '">Entfernen</button></td>' : '') +
+              (canDelete ? '<td><button type="button" class="btn btn-danger btn-sm ops-news-del-btn" data-news-id="' + esc(it.id) + '">Entfernen</button></td>' : '') +
             '</tr>';
           }).join('') +
         '</tbody></table></div>'
@@ -2198,6 +2199,7 @@
     const backendPending = !!(res && !res.success && String(res.error || '').indexOf('Unbekannte Aktion') !== -1);
     const items = (res && res.success && Array.isArray(res.items)) ? res.items : [];
     const needsCheckCount = (res && res.success && res.needsCheckCount) ? res.needsCheckCount : 0;
+    const canResolve86 = !(res && res.canResolve === false);
 
     const alertBannerHtml = needsCheckCount > 0
       ? '<div class="ops-86-banner">' +
@@ -2216,7 +2218,9 @@
                 (it.needsDailyCheck
                   ? '<button type="button" class="btn btn-primary btn-sm ops-86-confirm-btn" data-id="' + esc(it.id) + '">Noch aktuell? ✓</button>'
                   : '') +
-                '<button type="button" class="btn btn-sm ops-86-resolve-btn" data-id="' + esc(it.id) + '">Wieder da ✓</button>' +
+                (canResolve86
+                  ? '<button type="button" class="btn btn-sm ops-86-resolve-btn" data-id="' + esc(it.id) + '">Wieder da ✓</button>'
+                  : '') +
               '</div>';
             return '<tr class="' + (it.needsDailyCheck ? 'is-dirty' : '') + '">' +
               '<td><b>' + esc(it.artikel) + '</b><div style="font-size:11.5px;color:var(--os-silk);">Eingetragen von ' + esc(it.eingetragenVon || 'Team') + '</div></td>' +

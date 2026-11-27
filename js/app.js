@@ -636,6 +636,210 @@
 
     renderActiveView();
     scheduleBackgroundWarmup(s);
+    maybeStartFirstLoginTour(s);
+  }
+
+  function getTourStorageKey(session) {
+    const uid = (session && session.user && (session.user.id || session.user.email)) || 'default';
+    return 'sona_os_tour_done_v1_' + String(uid).trim();
+  }
+
+  function maybeStartFirstLoginTour(session) {
+    if (!session || !session.user) return;
+    try {
+      if (localStorage.getItem(getTourStorageKey(session)) === '1') return;
+    } catch (e) {
+      return;
+    }
+    setTimeout(() => {
+      if (!STATE.session || document.getElementById('sonaOnboardingOverlay')) return;
+      startOnboardingTour(false);
+    }, 450);
+  }
+
+  function startOnboardingTour(forceStart) {
+    const s = STATE.session;
+    if (!s || !s.user) return;
+    const existing = document.getElementById('sonaOnboardingOverlay');
+    if (existing) existing.remove();
+    const existingRing = document.getElementById('sonaTourSpotlight');
+    if (existingRing) existingRing.remove();
+    const existingPop = document.getElementById('sonaTourPopover');
+    if (existingPop) existingPop.remove();
+
+    if (STATE.activeView !== 'overview') {
+      STATE.activeView = 'overview';
+      renderActiveView();
+    }
+
+    const markDone = () => {
+      try { localStorage.setItem(getTourStorageKey(s), '1'); } catch (e) {}
+    };
+
+    const cleanup = () => {
+      ['sonaOnboardingOverlay', 'sonaTourSpotlight', 'sonaTourPopover'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.remove();
+      });
+      document.removeEventListener('keydown', onKey);
+    };
+
+    const finishTour = () => {
+      markDone();
+      cleanup();
+    };
+
+    const steps = [
+      {
+        selector: '.home-quick-toolbar',
+        title: 'Schnellzugriff',
+        text: 'Hier erfasst du Schwund, Bruch oder Reklamationen mit einem Klick – inklusive aktuellem Monatswert direkt darunter.'
+      },
+      {
+        selector: '#homeQuickSearch',
+        title: 'Schnellsuche',
+        text: 'Tippe einfach ein Stichwort ein, um jedes Modul, jede Liste oder Aktion im gesamten System sofort zu öffnen.'
+      },
+      {
+        selector: '.home-info-stack',
+        title: 'Deine Startseite auf einen Blick',
+        text: 'Dein täglicher Kompass: Routineaufgaben (Putzplan & To-Do mit Live-Fortschritt), aktuelle Team-Infos („Was gibt\'s Neues?“), 86-Liste und Team-Feedback.'
+      },
+      {
+        selector: () => {
+          const isMobile = window.innerWidth <= 900;
+          return document.querySelector(isMobile ? '#osMobileNav' : '#osNavList');
+        },
+        title: 'Menü & Oberthemen',
+        text: 'Hier findest du alle für dich freigegebenen Ebenen – von Operations über Warenwirtschaft bis Controlling – übersichtlich gegliedert.'
+      },
+      {
+        selector: '#btnUserSettings',
+        title: 'Einstellungen',
+        text: 'Über das Zahnrad unten links kannst du jederzeit dein Passwort ändern, Support & Hilfe öffnen oder dich sicher abmelden.'
+      },
+      {
+        selector: '#btnTopSupportHelp',
+        title: 'Hilfe & Support',
+        text: 'Fragen zur Bedienung oder ein Problem entdeckt? Hier findest du Anleitungen, Bedienungs-Videos, FAQs und den direkten Support mit Foto-Upload.'
+      }
+    ];
+
+    let stepIdx = -1; // -1 = Extravagante Willkommenskarte
+
+    const onKey = ev => {
+      if (ev.key === 'Escape') {
+        finishTour();
+      } else if (ev.key === 'ArrowRight' && stepIdx >= 0) {
+        if (stepIdx < steps.length - 1) showStep(stepIdx + 1);
+        else finishTour();
+      } else if (ev.key === 'ArrowLeft' && stepIdx > 0) {
+        showStep(stepIdx - 1);
+      }
+    };
+    document.addEventListener('keydown', onKey);
+
+    const showWelcome = () => {
+      cleanup();
+      document.addEventListener('keydown', onKey);
+      const wrap = document.createElement('div');
+      wrap.id = 'sonaOnboardingOverlay';
+      wrap.className = 'tour-backdrop';
+      wrap.innerHTML =
+        '<div class="tour-welcome-card" role="dialog" aria-modal="true" aria-label="Willkommen bei SONA OS">' +
+          '<img class="tour-welcome-logo" src="./assets/sona-logo-transparent.png" alt="SONA">' +
+          '<div class="tour-welcome-kicker">SONA OS · Operative System</div>' +
+          '<h2 class="tour-welcome-title">Herzlich willkommen, ' + esc(s.user.name) + '!</h2>' +
+          '<p class="tour-welcome-text">' +
+            'Bereit für den nächsten Schritt? Alle operativen Listen, Tages-Briefings, 86-Status und Werkzeuge sind ab sofort an einem Ort – übersichtlich auf einen Blick.<br><br>' +
+            '<b>Wir freuen uns auf deine Mitarbeit!</b>' +
+          '</p>' +
+          '<div class="tour-welcome-actions">' +
+            '<button type="button" id="btnTourBegin" class="btn btn-primary" style="min-width:220px;height:44px;">Kurze Tour starten →</button>' +
+            '<button type="button" id="btnTourSkip" class="btn-link" style="font-size:12px;">Direkt loslegen (überspringen)</button>' +
+          '</div>' +
+        '</div>';
+      document.body.appendChild(wrap);
+      $('btnTourBegin').addEventListener('click', () => showStep(0));
+      $('btnTourSkip').addEventListener('click', finishTour);
+    };
+
+    const showStep = idx => {
+      stepIdx = idx;
+      cleanup();
+      document.addEventListener('keydown', onKey);
+      const st = steps[idx];
+      const targetEl = typeof st.selector === 'function' ? st.selector() : document.querySelector(st.selector);
+      let rect = null;
+      if (targetEl) {
+        try { targetEl.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (e) {}
+        const r = targetEl.getBoundingClientRect();
+        if (r.width > 0 && r.height > 0) rect = r;
+      }
+
+      if (rect) {
+        const ring = document.createElement('div');
+        ring.id = 'sonaTourSpotlight';
+        ring.className = 'tour-spotlight-ring';
+        const pad = 6;
+        ring.style.top = Math.max(4, rect.top - pad) + 'px';
+        ring.style.left = Math.max(4, rect.left - pad) + 'px';
+        ring.style.width = Math.min(window.innerWidth - 8, rect.width + pad * 2) + 'px';
+        ring.style.height = Math.min(window.innerHeight - 8, rect.height + pad * 2) + 'px';
+        document.body.appendChild(ring);
+      } else {
+        const bg = document.createElement('div');
+        bg.id = 'sonaOnboardingOverlay';
+        bg.className = 'tour-backdrop';
+        document.body.appendChild(bg);
+      }
+
+      const pop = document.createElement('div');
+      pop.id = 'sonaTourPopover';
+      pop.className = 'tour-popover-card';
+      const dotsHtml = steps.map((_, i) => '<span class="tour-step-dot' + (i <= idx ? ' active' : '') + '"></span>').join('');
+      const isLast = idx === steps.length - 1;
+      pop.innerHTML =
+        '<div class="tour-step-dots">' + dotsHtml + '</div>' +
+        '<div class="kicker" style="margin-bottom:4px;">Schritt ' + (idx + 1) + ' von ' + steps.length + '</div>' +
+        '<h3 class="tour-popover-title">' + esc(st.title) + '</h3>' +
+        '<p class="tour-popover-text">' + esc(st.text) + '</p>' +
+        '<div class="tour-popover-footer">' +
+          '<button type="button" id="btnTourClose" class="btn-link" style="font-size:12px;">Beenden</button>' +
+          '<div style="display:flex;gap:8px;">' +
+            (idx > 0 ? '<button type="button" id="btnTourPrev" class="btn btn-sm">Zurück</button>' : '') +
+            '<button type="button" id="btnTourNext" class="btn btn-primary btn-sm">' + (isLast ? 'Los geht\'s!' : 'Weiter →') + '</button>' +
+          '</div>' +
+        '</div>';
+      document.body.appendChild(pop);
+
+      // Intelligente Positionierung (über/unter dem Highlight oder zentriert)
+      const popRect = pop.getBoundingClientRect();
+      let topPos = Math.round((window.innerHeight - popRect.height) / 2);
+      let leftPos = Math.round((window.innerWidth - popRect.width) / 2);
+      if (rect) {
+        const spaceBelow = window.innerHeight - rect.bottom;
+        const spaceAbove = rect.top;
+        if (spaceBelow >= popRect.height + 24) {
+          topPos = Math.round(rect.bottom + 14);
+          leftPos = Math.round(Math.min(Math.max(14, rect.left), window.innerWidth - popRect.width - 14));
+        } else if (spaceAbove >= popRect.height + 24) {
+          topPos = Math.round(rect.top - popRect.height - 14);
+          leftPos = Math.round(Math.min(Math.max(14, rect.left), window.innerWidth - popRect.width - 14));
+        }
+      }
+      pop.style.top = Math.max(14, Math.min(window.innerHeight - popRect.height - 14, topPos)) + 'px';
+      pop.style.left = Math.max(14, Math.min(window.innerWidth - popRect.width - 14, leftPos)) + 'px';
+
+      $('btnTourClose').addEventListener('click', finishTour);
+      if ($('btnTourPrev')) $('btnTourPrev').addEventListener('click', () => showStep(idx - 1));
+      $('btnTourNext').addEventListener('click', () => {
+        if (isLast) finishTour();
+        else showStep(idx + 1);
+      });
+    };
+
+    showWelcome();
   }
 
   async function preloadEmbeddedModule(mod) {
@@ -1608,6 +1812,7 @@
               '<div class="kicker">SONA OS · Service</div>' +
               '<h3>Hilfe &amp; Support</h3>' +
             '</div>' +
+            '<button type="button" id="btnReplayAppTour" class="btn btn-sm">App-Tour starten</button>' +
           '</div>' +
           '<div class="help-tabs">' +
             '<button type="button" class="btn btn-sm ' + (activeTab === 'hilfe' ? 'btn-primary' : '') + '" data-sh-tab="hilfe">Hilfe, Videos &amp; FAQs</button>' +
@@ -1622,6 +1827,9 @@
           renderShell();
         });
       });
+      if ($('btnReplayAppTour')) {
+        $('btnReplayAppTour').addEventListener('click', () => startOnboardingTour(true));
+      }
 
       if (activeTab === 'support') {
         renderSupportPane();

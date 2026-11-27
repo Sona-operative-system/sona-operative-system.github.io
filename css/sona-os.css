@@ -2673,3 +2673,132 @@ textarea.ops-textarea {
 .sidebar-footer {
   flex-shrink: 0;
 }
+
+/* ============================================================================
+   v40: Extravagante Erstlogin-Begrüßung & Interaktive App-Tour
+   ============================================================================ */
+.tour-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  background: rgba(0, 0, 0, 0.78);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 18px;
+  animation: tourFadeIn 0.28s ease;
+}
+
+@keyframes tourFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.tour-welcome-card {
+  width: min(500px, 96vw);
+  background: radial-gradient(circle at top center, rgba(245, 236, 215, 0.1), #0b0b0b 65%);
+  border: 1px solid rgba(245, 236, 215, 0.32);
+  border-radius: 18px;
+  padding: 32px 28px 26px;
+  text-align: center;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.85), 0 0 40px rgba(245, 236, 215, 0.08);
+}
+
+.tour-welcome-logo {
+  width: 78px;
+  height: 78px;
+  margin: 0 auto 14px;
+  display: block;
+  filter: drop-shadow(0 0 18px rgba(245, 236, 215, 0.25));
+}
+
+.tour-welcome-kicker {
+  font-size: 10.5px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: rgba(245, 236, 215, 0.68);
+  margin-bottom: 8px;
+}
+
+.tour-welcome-title {
+  font-family: var(--font-serif);
+  font-size: 30px;
+  font-weight: 600;
+  color: var(--os-cream);
+  margin: 0 0 12px;
+  line-height: 1.2;
+}
+
+.tour-welcome-text {
+  font-size: 14px;
+  line-height: 1.65;
+  color: rgba(245, 236, 215, 0.84);
+  margin: 0 0 22px;
+}
+
+.tour-welcome-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: center;
+}
+
+.tour-spotlight-ring {
+  position: fixed;
+  z-index: 1205;
+  pointer-events: none;
+  border-radius: 12px;
+  border: 2px solid var(--os-cream);
+  box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.72), 0 0 24px rgba(245, 236, 215, 0.35);
+  transition: all 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.tour-popover-card {
+  position: fixed;
+  z-index: 1210;
+  width: min(360px, calc(100vw - 28px));
+  background: #101010;
+  border: 1px solid rgba(245, 236, 215, 0.35);
+  border-radius: 14px;
+  padding: 18px 20px;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.85);
+}
+
+.tour-step-dots {
+  display: flex;
+  gap: 5px;
+  margin-bottom: 10px;
+}
+
+.tour-step-dot {
+  height: 3px;
+  flex: 1;
+  border-radius: 3px;
+  background: rgba(245, 236, 215, 0.16);
+}
+
+.tour-step-dot.active {
+  background: var(--os-cream);
+}
+
+.tour-popover-title {
+  font-family: var(--font-serif);
+  font-size: 20px;
+  color: var(--os-cream);
+  margin: 0 0 6px;
+}
+
+.tour-popover-text {
+  font-size: 13px;
+  line-height: 1.55;
+  color: rgba(245, 236, 215, 0.85);
+  margin: 0 0 16px;
+}
+
+.tour-popover-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
