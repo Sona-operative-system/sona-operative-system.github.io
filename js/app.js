@@ -475,6 +475,11 @@
       .concat(opsNavItems)
       .concat(mods.filter(m => m.key !== 'operations').map(m => ({ key: 'mod_' + m.key, title: m.title, pillar: m.pillar || 'WARENWIRTSCHAFT' })));
 
+    const hasWwOrOps = mods.some(m => (m.pillar || 'WARENWIRTSCHAFT') === 'WARENWIRTSCHAFT' || m.key === 'operations');
+    if (hasWwOrOps) {
+      navItems.push({ key: 'ww_auswertung', title: 'Schwund & Bruch', pillar: 'WARENWIRTSCHAFT' });
+    }
+
     const adminNavItems = [];
     if (hasAdminTab(s, 'rbac')) {
       adminNavItems.push({ key: 'rbac', title: 'Rechte-Matrix', pillar: 'ADMIN' });
@@ -487,7 +492,7 @@
     }
     adminNavItems.forEach(it => navItems.push(it));
 
-    const validNonNavView = STATE.activeView === 'mod_operations';
+    const validNonNavView = STATE.activeView === 'mod_operations' || STATE.activeView === 'support_help';
     if (!validNonNavView && !navItems.some(x => x.key === STATE.activeView)) {
       STATE.activeView = 'overview';
     }
@@ -758,6 +763,25 @@
     if (STATE.activeView === 'overview') {
       showMainContentPane();
       renderOverview();
+      return;
+    }
+    if (STATE.activeView === 'support_help') {
+      showMainContentPane();
+      renderSupportHelpView();
+      return;
+    }
+    if (STATE.activeView === 'ww_auswertung') {
+      const wwGrp = document.querySelector('#osNavList .os-nav-group[data-pillar="WARENWIRTSCHAFT"]');
+      if (wwGrp) {
+        wwGrp.classList.add('open');
+        STATE.openPillars.WARENWIRTSCHAFT = true;
+      }
+      showMainContentPane();
+      const container = $('osMainContent');
+      if (container && window.SonaOperationsModule && window.SonaOperationsModule.renderAuswertungInto) {
+        container.innerHTML = '<div id="wwAuswertungSlot"></div>';
+        window.SonaOperationsModule.renderAuswertungInto($('wwAuswertungSlot'), s);
+      }
       return;
     }
     if ((STATE.activeView === 'rbac' && hasAdminTab(s, 'rbac')) ||
@@ -1559,6 +1583,351 @@
     });
 
     await loadRecs();
+  }
+
+  async function renderSupportHelpView(initialTab) {
+    const container = $('osMainContent');
+    if (!container) return;
+    let activeTab = initialTab === 'support' ? 'support' : 'hilfe';
+    let selectedEbene = 'Alle';
+    let helpEntries = [];
+    let isAdmin = !!(STATE.session && STATE.session.permissions && STATE.session.permissions.adminMatrix);
+    let backendPending = false;
+
+    const renderShell = () => {
+      container.innerHTML =
+        '<div class="card" style="margin-bottom:16px;">' +
+          '<div class="card-head">' +
+            '<div>' +
+              '<div class="kicker">SONA OS · Service</div>' +
+              '<h3>Hilfe &amp; Support</h3>' +
+            '</div>' +
+          '</div>' +
+          '<div class="help-tabs">' +
+            '<button type="button" class="btn btn-sm ' + (activeTab === 'hilfe' ? 'btn-primary' : '') + '" data-sh-tab="hilfe">Hilfe, Videos &amp; FAQs</button>' +
+            '<button type="button" class="btn btn-sm ' + (activeTab === 'support' ? 'btn-primary' : '') + '" data-sh-tab="support">Support kontaktieren</button>' +
+          '</div>' +
+          '<div id="supportHelpBody"></div>' +
+        '</div>';
+
+      container.querySelectorAll('[data-sh-tab]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          activeTab = btn.dataset.shTab;
+          renderShell();
+        });
+      });
+
+      if (activeTab === 'support') {
+        renderSupportPane();
+      } else {
+        renderHelpPane();
+      }
+    };
+
+    const renderSupportPane = () => {
+      const body = $('supportHelpBody');
+      if (!body) return;
+      body.innerHTML =
+        '<p class="module-desc" style="margin-bottom:14px;">Du hast eine Frage, einen Fehler entdeckt oder brauchst Hilfe zu einem Bereich? Schreib direkt an die Administration – optional mit Screenshot oder Foto.</p>' +
+        '<div id="supportSendMsg" style="font-size:12.5px;margin-bottom:10px;"></div>' +
+        '<div class="user-modal-grid">' +
+          '<div class="form-field">' +
+            '<label class="kicker" for="supTopic">Thema / Bereich</label>' +
+            '<select id="supTopic" class="input-control">' +
+              '<option value="Allgemein">Allgemein</option>' +
+              '<option value="Startseite / Operations">Startseite / Operations</option>' +
+              '<option value="Warenwirtschaft">Warenwirtschaft (Einkauf / Bestand / Rezepturen)</option>' +
+              '<option value="Controlling / Performance">Controlling / Performance</option>' +
+              '<option value="Events">Events / Eventkalkulation</option>' +
+              '<option value="Login & Rechte">Login, Passwort &amp; Rechte</option>' +
+              '<option value="Technischer Fehler">Technischer Fehler / Bug</option>' +
+            '</select>' +
+          '</div>' +
+          '<div class="form-field">' +
+            '<label class="kicker" for="supSubject">Betreff</label>' +
+            '<input type="text" id="supSubject" class="input-control" maxlength="160" placeholder="Kurze Zusammenfassung deines Anliegens">' +
+          '</div>' +
+        '</div>' +
+        '<div class="form-field">' +
+          '<label class="kicker" for="supMessage">Nachricht</label>' +
+          '<textarea id="supMessage" class="input-control" rows="5" maxlength="8000" placeholder="Beschreibe kurz, wobei wir helfen können …"></textarea>' +
+        '</div>' +
+        '<div class="form-field">' +
+          '<label class="kicker" for="supPhoto">Foto / Screenshot anhängen (optional, max. 8 MB)</label>' +
+          '<input type="file" id="supPhoto" class="input-control" accept="image/*,.pdf">' +
+        '</div>' +
+        '<div style="display:flex;justify-content:flex-end;">' +
+          '<button type="button" id="btnSendSupport" class="btn btn-primary">Support-Nachricht senden</button>' +
+        '</div>';
+
+      $('btnSendSupport').addEventListener('click', async () => {
+        const msgEl = $('supportSendMsg');
+        const topic = ($('supTopic') && $('supTopic').value) || 'Allgemein';
+        const subject = ($('supSubject') && $('supSubject').value || '').trim();
+        const message = ($('supMessage') && $('supMessage').value || '').trim();
+        if (subject.length < 2 || message.length < 3) {
+          if (msgEl) { msgEl.style.color = '#f87171'; msgEl.textContent = 'Bitte Betreff und Nachricht ausfüllen.'; }
+          return;
+        }
+        const photoEl = $('supPhoto');
+        const fileObj = photoEl && photoEl.files && photoEl.files[0];
+        let photoBase64 = '';
+        let photoName = '';
+        let photoMimeType = '';
+        if (fileObj) {
+          if (fileObj.size > 8 * 1024 * 1024) {
+            if (msgEl) { msgEl.style.color = '#f87171'; msgEl.textContent = 'Datei ist zu groß (max. 8 MB).'; }
+            return;
+          }
+          photoName = fileObj.name;
+          photoMimeType = fileObj.type || 'image/jpeg';
+          photoBase64 = await new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(String(reader.result || ''));
+            reader.onerror = () => reject(new Error('Datei konnte nicht gelesen werden.'));
+            reader.readAsDataURL(fileObj);
+          });
+        }
+
+        const btn = $('btnSendSupport');
+        btn.disabled = true;
+        btn.textContent = 'Sendet…';
+        if (msgEl) msgEl.textContent = '';
+        try {
+          const res = await window.SonaApi.sendSupportRequest({
+            topic: topic,
+            subject: subject,
+            message: message,
+            photoBase64: photoBase64,
+            photoName: photoName,
+            photoMimeType: photoMimeType
+          });
+          if (!res || !res.success) {
+            if (msgEl) { msgEl.style.color = '#f87171'; msgEl.textContent = (res && res.error) || 'Senden fehlgeschlagen.'; }
+            return;
+          }
+          if (msgEl) { msgEl.style.color = '#6ee7b7'; msgEl.textContent = '✓ Deine Support-Anfrage wurde erfolgreich gesendet.'; }
+          if ($('supSubject')) $('supSubject').value = '';
+          if ($('supMessage')) $('supMessage').value = '';
+          if (photoEl) photoEl.value = '';
+          showToast('Support-Nachricht gesendet.');
+        } catch (err) {
+          if (msgEl) { msgEl.style.color = '#f87171'; msgEl.textContent = 'Verbindungsfehler.'; }
+        } finally {
+          btn.disabled = false;
+          btn.textContent = 'Support-Nachricht senden';
+        }
+      });
+    };
+
+    const renderHelpPane = () => {
+      const body = $('supportHelpBody');
+      if (!body) return;
+      const ebenen = ['Alle', 'Startseite', 'Operations', 'Events', 'Warenwirtschaft', 'Controlling', 'Performance', 'Admin', 'Allgemein'];
+      const filtered = selectedEbene === 'Alle'
+        ? helpEntries
+        : helpEntries.filter(it => String(it.ebene || '').toLowerCase() === selectedEbene.toLowerCase());
+
+      const editorHtml = (isAdmin && !backendPending) ? (
+        '<details class="ops-activity-details" style="margin:0 0 16px;">' +
+          '<summary>+ Neues Video, FAQ oder Anleitung anlegen (Admin)</summary>' +
+          '<div class="ops-activity-body">' +
+            '<div id="helpSaveMsg" style="font-size:12.5px;margin-bottom:8px;"></div>' +
+            '<div class="user-modal-grid">' +
+              '<div class="form-field">' +
+                '<label class="kicker" for="hlpTyp">Eintrag-Typ</label>' +
+                '<select id="hlpTyp" class="input-control">' +
+                  '<option value="ANLEITUNG">Anleitung / Ebene beschreiben</option>' +
+                  '<option value="VIDEO">Bedienungs-Video</option>' +
+                  '<option value="FAQ">Frage &amp; Antwort (FAQ)</option>' +
+                '</select>' +
+              '</div>' +
+              '<div class="form-field">' +
+                '<label class="kicker" for="hlpEbene">Ebene</label>' +
+                '<select id="hlpEbene" class="input-control">' +
+                  ebenen.filter(e => e !== 'Alle').map(e => '<option value="' + esc(e) + '">' + esc(e) + '</option>').join('') +
+                '</select>' +
+              '</div>' +
+              '<div class="form-field">' +
+                '<label class="kicker" for="hlpUnterthema">Unterthema (optional)</label>' +
+                '<input type="text" id="hlpUnterthema" class="input-control" maxlength="80" placeholder="z. B. Putzplan, 86-Liste, Rechnungsscan">' +
+              '</div>' +
+              '<div class="form-field">' +
+                '<label class="kicker" for="hlpTitel">Titel / Frage</label>' +
+                '<input type="text" id="hlpTitel" class="input-control" maxlength="160" placeholder="z. B. Wie trage ich einen Artikel auf die 86-Liste ein?">' +
+              '</div>' +
+            '</div>' +
+            '<div class="form-field">' +
+              '<label class="kicker" for="hlpInhalt">Beschreibung / Antwort / Schritte</label>' +
+              '<textarea id="hlpInhalt" class="input-control" rows="4" maxlength="8000" placeholder="Kurze Schritt-für-Schritt-Erklärung …"></textarea>' +
+            '</div>' +
+            '<div class="user-modal-grid">' +
+              '<div class="form-field">' +
+                '<label class="kicker" for="hlpVideoFile">Video direkt hochladen (optional, MP4/MOV max. 20 MB)</label>' +
+                '<input type="file" id="hlpVideoFile" class="input-control" accept="video/*">' +
+              '</div>' +
+              '<div class="form-field">' +
+                '<label class="kicker" for="hlpVideoUrl">oder Video-Link (Google Drive / YouTube)</label>' +
+                '<input type="url" id="hlpVideoUrl" class="input-control" maxlength="500" placeholder="https://drive.google.com/file/d/…">' +
+              '</div>' +
+            '</div>' +
+            '<div style="display:flex;justify-content:flex-end;">' +
+              '<button type="button" id="btnSaveHelpEntry" class="btn btn-primary btn-sm">Hilfe-Eintrag speichern</button>' +
+            '</div>' +
+          '</div>' +
+        '</details>'
+      ) : '';
+
+      const cardsHtml = backendPending
+        ? '<p class="home-empty-hint">Hilfe-Center wird nach dem nächsten <code>@sync</code> automatisch aktiviert.</p>'
+        : (filtered.length
+            ? '<div class="help-cards-grid">' +
+                filtered.map(it => {
+                  const typLabel = it.typ === 'VIDEO' ? 'Video' : (it.typ === 'FAQ' ? 'FAQ' : 'Anleitung');
+                  const videoHtml = it.videoUrl
+                    ? '<div class="help-video-wrap"><iframe src="' + esc(it.videoUrl) + '" allow="autoplay; fullscreen" allowfullscreen></iframe></div>'
+                    : '';
+                  const delBtn = isAdmin
+                    ? '<button type="button" class="btn btn-danger btn-sm hlp-del-btn" data-id="' + esc(it.id) + '" style="margin-left:auto;">Entfernen</button>'
+                    : '';
+                  if (it.typ === 'FAQ' && !it.videoUrl) {
+                    return '<details class="help-faq-item">' +
+                      '<summary>' +
+                        '<span class="badge" style="margin-right:8px;">' + esc(it.ebene) + (it.unterthema ? ' · ' + esc(it.unterthema) : '') + '</span>' +
+                        esc(it.titel) +
+                      '</summary>' +
+                      '<div class="help-faq-body">' + esc(it.inhalt) + '</div>' +
+                      (delBtn ? '<div style="margin-top:8px;display:flex;">' + delBtn + '</div>' : '') +
+                    '</details>';
+                  }
+                  return '<article class="help-card">' +
+                    '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">' +
+                      '<span class="badge">' + esc(typLabel) + '</span>' +
+                      '<span class="badge">' + esc(it.ebene) + (it.unterthema ? ' · ' + esc(it.unterthema) : '') + '</span>' +
+                      delBtn +
+                    '</div>' +
+                    '<h4 class="home-news-title" style="margin:0;">' + esc(it.titel) + '</h4>' +
+                    videoHtml +
+                    (it.inhalt ? '<div class="home-news-body">' + esc(it.inhalt) + '</div>' : '') +
+                  '</article>';
+                }).join('') +
+              '</div>'
+            : '<p class="home-empty-hint">Für diesen Bereich sind noch keine Hilfe-Einträge hinterlegt.</p>');
+
+      body.innerHTML =
+        editorHtml +
+        '<div class="help-filter-pills">' +
+          ebenen.map(e =>
+            '<button type="button" class="btn btn-sm ' + (selectedEbene === e ? 'btn-primary' : '') + '" data-hlp-filter="' + esc(e) + '">' + esc(e) + '</button>'
+          ).join('') +
+        '</div>' +
+        cardsHtml;
+
+      body.querySelectorAll('[data-hlp-filter]').forEach(b => {
+        b.addEventListener('click', () => {
+          selectedEbene = b.dataset.hlpFilter;
+          renderHelpPane();
+        });
+      });
+
+      const saveBtn = $('btnSaveHelpEntry');
+      if (saveBtn) {
+        saveBtn.addEventListener('click', async () => {
+          const msgEl = $('helpSaveMsg');
+          const titel = ($('hlpTitel') && $('hlpTitel').value || '').trim();
+          const inhalt = ($('hlpInhalt') && $('hlpInhalt').value || '').trim();
+          const typ = ($('hlpTyp') && $('hlpTyp').value) || 'ANLEITUNG';
+          const ebene = ($('hlpEbene') && $('hlpEbene').value) || 'Allgemein';
+          const unterthema = ($('hlpUnterthema') && $('hlpUnterthema').value || '').trim();
+          const videoUrl = ($('hlpVideoUrl') && $('hlpVideoUrl').value || '').trim();
+          if (titel.length < 2) {
+            if (msgEl) { msgEl.style.color = '#f87171'; msgEl.textContent = 'Bitte einen Titel eingeben.'; }
+            return;
+          }
+
+          let videoBase64 = '';
+          let videoFileName = '';
+          let videoMimeType = '';
+          const vf = $('hlpVideoFile') && $('hlpVideoFile').files && $('hlpVideoFile').files[0];
+          if (vf) {
+            if (vf.size > 20 * 1024 * 1024) {
+              if (msgEl) { msgEl.style.color = '#f87171'; msgEl.textContent = 'Video ist größer als 20 MB – bitte in Google Drive hochladen und den Link einfügen.'; }
+              return;
+            }
+            videoFileName = vf.name;
+            videoMimeType = vf.type || 'video/mp4';
+            videoBase64 = await new Promise((resolve, reject) => {
+              const reader = new FileReader();
+              reader.onload = () => resolve(String(reader.result || ''));
+              reader.onerror = () => reject(new Error('Video konnte nicht gelesen werden.'));
+              reader.readAsDataURL(vf);
+            });
+          }
+
+          saveBtn.disabled = true;
+          saveBtn.textContent = 'Speichert…';
+          if (msgEl) msgEl.textContent = '';
+          try {
+            const sRes = await window.SonaApi.saveHelpEntry({
+              typ: typ,
+              ebene: ebene,
+              unterthema: unterthema,
+              titel: titel,
+              inhalt: inhalt,
+              videoUrl: videoUrl,
+              videoFileName: videoFileName,
+              videoMimeType: videoMimeType,
+              videoBase64: videoBase64
+            });
+            if (!sRes || !sRes.success) {
+              if (msgEl) { msgEl.style.color = '#f87171'; msgEl.textContent = (sRes && sRes.error) || 'Speichern fehlgeschlagen.'; }
+              return;
+            }
+            showToast('Hilfe-Eintrag gespeichert.');
+            await loadHelpData();
+            renderHelpPane();
+          } catch (eSave) {
+            if (msgEl) { msgEl.style.color = '#f87171'; msgEl.textContent = 'Verbindungsfehler.'; }
+          } finally {
+            saveBtn.disabled = false;
+            saveBtn.textContent = 'Hilfe-Eintrag speichern';
+          }
+        });
+      }
+
+      body.querySelectorAll('.hlp-del-btn').forEach(b => {
+        b.addEventListener('click', async () => {
+          b.disabled = true;
+          try {
+            const dRes = await window.SonaApi.deleteHelpEntry(b.dataset.id);
+            if (dRes && dRes.success) {
+              showToast('Hilfe-Eintrag entfernt.');
+              await loadHelpData();
+              renderHelpPane();
+            }
+          } finally {
+            b.disabled = false;
+          }
+        });
+      });
+    };
+
+    const loadHelpData = async () => {
+      try {
+        const res = await window.SonaApi.getHelpEntries();
+        if (res && res.success) {
+          helpEntries = Array.isArray(res.entries) ? res.entries : [];
+          isAdmin = !!res.isAdmin;
+          backendPending = false;
+        } else if (res && String(res.error || '').indexOf('Unbekannte Aktion') !== -1) {
+          backendPending = true;
+        }
+      } catch (e) {}
+    };
+
+    renderShell();
+    await loadHelpData();
+    if (activeTab === 'hilfe') renderHelpPane();
   }
 
   function formatAuditTimestamp(isoStr) {
@@ -2481,6 +2850,12 @@
         }
       });
     }
+    const openSupportHelp = () => {
+      closeUserSettings();
+      window.SonaApp.openView('support_help');
+    };
+    if ($('btnOpenSupportHelp')) $('btnOpenSupportHelp').addEventListener('click', openSupportHelp);
+    if ($('btnTopSupportHelp')) $('btnTopSupportHelp').addEventListener('click', openSupportHelp);
     async function switchToLocation(targetLoc) {
       if (!targetLoc || (STATE.session && targetLoc === STATE.session.standortId)) {
         if ($('locationSwitcherMenu')) $('locationSwitcherMenu').classList.add('hidden');

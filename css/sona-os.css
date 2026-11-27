@@ -2550,3 +2550,93 @@ textarea.ops-textarea {
 .rundmail-rec-chip:hover {
   border-color: rgba(245, 236, 215, 0.35);
 }
+
+/* ============================================================================
+   v36: Top Hilfe & Support Button, Hilfe-Center & Video-Player
+   ============================================================================ */
+.top-help-btn {
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(245, 236, 215, 0.22);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--os-cream);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.top-help-btn:hover {
+  background: rgba(245, 236, 215, 0.12);
+  border-color: rgba(245, 236, 215, 0.5);
+}
+
+.help-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+
+.help-filter-pills {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+
+.help-cards-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 14px;
+}
+
+.help-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px 18px;
+  border-radius: 12px;
+  background: rgba(18, 18, 18, 0.92);
+  border: 1px solid rgba(245, 236, 215, 0.14);
+}
+
+.help-video-wrap {
+  position: relative;
+  width: 100%;
+  padding-top: 56.25%;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #000;
+  border: 1px solid rgba(245, 236, 215, 0.14);
+}
+
+.help-video-wrap iframe {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+
+.help-faq-item {
+  border: 1px solid rgba(245, 236, 215, 0.14);
+  border-radius: 10px;
+  padding: 12px 14px;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.help-faq-item summary {
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 13.5px;
+  color: var(--os-cream);
+}
+
+.help-faq-body {
+  margin-top: 8px;
+  font-size: 13px;
+  line-height: 1.55;
+  color: rgba(245, 236, 215, 0.85);
+  white-space: pre-wrap;
+}

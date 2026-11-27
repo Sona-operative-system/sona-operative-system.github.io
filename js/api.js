@@ -10,6 +10,7 @@
     os_rbac_list: true,
     os_audit_log: true,
     os_admin_rundmail_recipients: true,
+    os_help_list: true,
     os_bestand_dashboard: true,
     os_bestand_detail: true,
     os_controlling_meta: true,
@@ -185,6 +186,10 @@
     getAuditLog: (filter) => callPost('os_audit_log', { filter: filter || {} }),
     getRundmailRecipients: () => callPost('os_admin_rundmail_recipients', {}),
     sendRundmail: (payload) => callPost('os_admin_rundmail_send', payload || {}),
+    sendSupportRequest: (payload) => callPost('os_support_send', payload || {}),
+    getHelpEntries: () => callPost('os_help_list', {}),
+    saveHelpEntry: (entry) => callPost('os_help_save', { entry: entry || {} }),
+    deleteHelpEntry: (helpId) => callPost('os_help_delete', { helpId: helpId }),
     getBestandDashboard: (standortId, filter, forceRefresh) => callPost('os_bestand_dashboard', {
       standortId: standortId,
       filter: filter || {},
