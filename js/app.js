@@ -494,6 +494,9 @@
     if (hasAdminTab(s, 'quellen')) {
       adminNavItems.push({ key: 'quellen', title: 'Quellen', pillar: 'ADMIN' });
     }
+    if (hasAdminTab(s, 'direktnachricht')) {
+      adminNavItems.push({ key: 'direktnachricht', title: 'Direktnachrichten', pillar: 'ADMIN' });
+    }
     adminNavItems.forEach(it => navItems.push(it));
 
     const validNonNavView = STATE.activeView === 'mod_operations' || STATE.activeView === 'support_help';
@@ -752,6 +755,7 @@
     renderActiveView();
     scheduleBackgroundWarmup(s);
     maybeStartFirstLoginTour(s);
+    setTimeout(() => checkAndShowPendingDirectMessages(s), 250);
   }
 
   function getTourStorageKey(session) {
@@ -1107,7 +1111,8 @@
     if ((STATE.activeView === 'rbac' && hasAdminTab(s, 'rbac')) ||
         (STATE.activeView === 'audit_log' && hasAdminTab(s, 'audit_log')) ||
         (STATE.activeView === 'rundmail' && hasAdminTab(s, 'rundmail')) ||
-        (STATE.activeView === 'quellen' && hasAdminTab(s, 'quellen'))) {
+        (STATE.activeView === 'quellen' && hasAdminTab(s, 'quellen')) ||
+        (STATE.activeView === 'direktnachricht' && hasAdminTab(s, 'direktnachricht'))) {
       const adminGrp = document.querySelector('#osNavList .os-nav-group[data-pillar="ADMIN"]');
       if (adminGrp) {
         adminGrp.classList.add('open');
@@ -1120,6 +1125,8 @@
         renderRundmailView();
       } else if (STATE.activeView === 'quellen') {
         renderAdminSourcesView();
+      } else if (STATE.activeView === 'direktnachricht') {
+        renderDirectMessagesAdminView();
       } else {
         renderRbacMatrixView();
       }
@@ -1501,6 +1508,14 @@
         run: () => window.SonaApp.openView('quellen')
       });
     }
+    if (hasAdminTab(s, 'direktnachricht')) {
+      searchItems.push({
+        label: 'Direktnachrichten (Pflicht-Popup)',
+        meta: 'Admin',
+        keywords: 'direktnachricht taggen mitteilung pflicht popup user nachricht bild datei',
+        run: () => window.SonaApp.openView('direktnachricht')
+      });
+    }
 
     const searchInput = $('homeQuickSearch');
     const resultsBox = $('homeSearchResults');
@@ -1825,6 +1840,328 @@
     $('btnReloadRbac').addEventListener('click', loadRbacTable);
     renderOtpResultBanner();
     await loadRbacTable();
+  }
+
+  let dmCheckInFlight = false;
+  async function checkAndShowPendingDirectMessages(session) {
+    if (!session || !session.user || dmCheckInFlight) return;
+    if (document.getElementById('sonaDmBlockingModal')) return;
+    dmCheckInFlight = true;
+    try {
+      const res = await window.SonaApi.getPendingDirectMessages();
+      if (!res || !res.success || !Array.isArray(res.messages) || !res.messages.length) return;
+      showNextDirectMessageBlockingPopup(res.messages, 0);
+    } catch (e) {
+    } finally {
+      dmCheckInFlight = false;
+    }
+  }
+
+  function showNextDirectMessageBlockingPopup(messages, idx) {
+    const existing = document.getElementById('sonaDmBlockingModal');
+    if (existing) existing.remove();
+    if (!Array.isArray(messages) || idx >= messages.length) return;
+    const msg = messages[idx];
+    const isImage = String(msg.fileMime || '').indexOf('image/') === 0 && !!msg.fileUrl;
+    const hasFile = !!msg.fileUrl && !isImage;
+    const dateStr = msg.erstelltAm ? new Date(msg.erstelltAm).toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' }) : '';
+
+    const backdrop = document.createElement('div');
+    backdrop.id = 'sonaDmBlockingModal';
+    backdrop.className = 'modal-backdrop';
+    backdrop.style.zIndex = '2600';
+    backdrop.setAttribute('role', 'alertdialog');
+    backdrop.setAttribute('aria-modal', 'true');
+    backdrop.innerHTML =
+      '<div class="modal-card" style="max-width:560px;max-height:88vh;overflow-y:auto;">' +
+        '<div class="card-head" style="margin-bottom:10px;">' +
+          '<div>' +
+            '<div class="kicker" style="color:var(--os-amber);">Pflicht-Mitteilung (' + (idx + 1) + ' von ' + messages.length + ')</div>' +
+            '<h3 style="margin-top:2px;">' + esc(msg.thema) + '</h3>' +
+            '<div style="font-size:11.5px;color:var(--os-silk);margin-top:2px;">Von ' + esc(msg.autorName || 'Admin') + (dateStr ? ' · ' + esc(dateStr) : '') + '</div>' +
+          '</div>' +
+        '</div>' +
+        (msg.text
+          ? '<div style="white-space:pre-wrap;line-height:1.55;font-size:13.5px;color:var(--os-cream);padding:12px;border-radius:8px;background:rgba(255,255,255,0.03);border:1px solid var(--os-line);margin-bottom:12px;">' + esc(msg.text) + '</div>'
+          : '') +
+        (isImage
+          ? '<div style="margin-bottom:12px;text-align:center;">' +
+              '<img src="' + esc(msg.fileUrl) + '" alt="' + esc(msg.fileName || 'Bild') + '" style="max-width:100%;max-height:320px;border-radius:8px;border:1px solid var(--os-line);object-fit:contain;">' +
+            '</div>'
+          : '') +
+        ((msg.linkUrl || hasFile)
+          ? '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;">' +
+              (msg.linkUrl ? '<a class="btn btn-sm" href="' + esc(msg.linkUrl) + '" target="_blank" rel="noopener noreferrer">Link öffnen ↗</a>' : '') +
+              (hasFile ? '<a class="btn btn-sm" href="' + esc(msg.fileUrl) + '" target="_blank" rel="noopener noreferrer">Datei öffnen: ' + esc(msg.fileName || 'Anhang') + ' ↗</a>' : '') +
+            '</div>'
+          : '') +
+        '<div style="display:flex;justify-content:flex-end;padding-top:10px;border-top:1px solid var(--os-line);">' +
+          '<button type="button" id="btnConfirmBlockingDm" class="btn btn-primary" style="width:100%;">Gelesen &amp; Bestätigt ✓</button>' +
+        '</div>' +
+      '</div>';
+
+    document.body.appendChild(backdrop);
+    const btn = document.getElementById('btnConfirmBlockingDm');
+    if (btn) {
+      btn.addEventListener('click', async () => {
+        btn.disabled = true;
+        btn.textContent = 'Wird bestätigt…';
+        try {
+          await window.SonaApi.confirmDirectMessage(msg.dmId);
+        } catch (e) {}
+        showNextDirectMessageBlockingPopup(messages, idx + 1);
+      });
+    }
+  }
+
+  async function renderDirectMessagesAdminView() {
+    const c = $('osMainContent');
+    if (!c) return;
+    c.innerHTML =
+      '<div class="card" style="margin-bottom:16px;">' +
+        '<div class="card-head">' +
+          '<div>' +
+            '<div class="kicker">Administration · Pflicht-Mitteilung</div>' +
+            '<h3>Direktnachricht an Mitarbeiter (Pflicht-Popup)</h3>' +
+            '<p class="module-desc" style="margin:4px 0 0;">Tagge einzelne oder mehrere Mitarbeiter. Beim nächsten App-Zugriff erscheint die Info als Pflicht-Popup, das erst bestätigt werden muss.</p>' +
+          '</div>' +
+        '</div>' +
+        '<div id="dmAdminMsg" style="font-size:12.5px;margin-bottom:10px;"></div>' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px;">' +
+          '<label class="kicker" style="margin:0;">Mitarbeiter taggen (<span id="dmSelCount">0</span> ausgewählt)</label>' +
+          '<div style="display:flex;gap:6px;flex-wrap:wrap;" id="dmQuickFilters">' +
+            '<button type="button" class="btn btn-sm" data-dm-filter="ALL">Alle</button>' +
+            '<button type="button" class="btn btn-sm" data-dm-filter="001">Karli (001)</button>' +
+            '<button type="button" class="btn btn-sm" data-dm-filter="002">Prager (002)</button>' +
+            '<button type="button" class="btn btn-sm" data-dm-filter="NONE">Auswahl leeren</button>' +
+          '</div>' +
+        '</div>' +
+        '<input type="search" id="dmRecSearch" class="input-control" placeholder="Mitarbeiter suchen …" style="margin-bottom:8px;">' +
+        '<div id="dmRecipientsBox" class="rundmail-recipients-grid"><p class="module-desc" style="margin:0;">Lade Mitarbeiterliste …</p></div>' +
+        '<div class="form-field" style="margin-top:12px;">' +
+          '<label class="kicker" for="dmThema">Thema / Überschrift *</label>' +
+          '<input type="text" id="dmThema" class="input-control" maxlength="160" placeholder="z. B. Neue Kühlhaus-Regel / Wichtige Info">' +
+        '</div>' +
+        '<div class="form-field">' +
+          '<label class="kicker" for="dmText">Nachrichtentext</label>' +
+          '<textarea id="dmText" class="input-control" rows="4" maxlength="6000" style="height:auto;padding:10px;" placeholder="Info-Text für die getaggten Mitarbeiter…"></textarea>' +
+        '</div>' +
+        '<div class="grid-2">' +
+          '<div class="form-field">' +
+            '<label class="kicker" for="dmLinkUrl">Optionaler Link (URL)</label>' +
+            '<input type="url" id="dmLinkUrl" class="input-control" maxlength="500" placeholder="https://…">' +
+          '</div>' +
+          '<div class="form-field">' +
+            '<label class="kicker" for="dmFileInput">Optionales Bild oder Datei (max. 10 MB)</label>' +
+            '<input type="file" id="dmFileInput" class="input-control" style="padding:7px;" accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt">' +
+          '</div>' +
+        '</div>' +
+        '<div style="display:flex;justify-content:flex-end;margin-top:8px;">' +
+          '<button type="button" id="btnSendDm" class="btn btn-primary">Pflicht-Popup senden</button>' +
+        '</div>' +
+      '</div>' +
+      '<div class="card">' +
+        '<div class="card-head">' +
+          '<div><div class="kicker">Nachverfolgung</div><h3>Gesendete Direktnachrichten &amp; Bestätigungen</h3></div>' +
+          '<button type="button" id="btnReloadDmList" class="btn btn-sm">Aktualisieren</button>' +
+        '</div>' +
+        '<div id="dmHistoryBox"><p class="module-desc">Lade Verlauf …</p></div>' +
+      '</div>';
+
+    const recBox = $('dmRecipientsBox');
+    const selCountEl = $('dmSelCount');
+    const recSearch = $('dmRecSearch');
+    const msgEl = $('dmAdminMsg');
+    let allRecipients = [];
+    const selectedIds = new Set();
+
+    const updateCount = () => {
+      if (selCountEl) selCountEl.textContent = String(selectedIds.size);
+    };
+
+    const drawRecipients = () => {
+      if (!recBox) return;
+      const q = String((recSearch && recSearch.value) || '').trim().toLowerCase();
+      const filtered = allRecipients.filter(r => {
+        if (!q) return true;
+        return (String(r.name || '') + ' ' + String(r.role || '') + ' ' + String(r.email || '')).toLowerCase().indexOf(q) !== -1;
+      });
+      if (!filtered.length) {
+        recBox.innerHTML = '<p class="module-desc" style="margin:0;">Keine Mitarbeiter gefunden.</p>';
+        return;
+      }
+      recBox.innerHTML = filtered.map(r => {
+        const chk = selectedIds.has(r.userId) ? ' checked' : '';
+        return '<label class="rundmail-rec-chip">' +
+          '<input type="checkbox" class="dm-rec-chk" value="' + esc(r.userId) + '"' + chk + '>' +
+          '<span><strong>' + esc(r.name) + '</strong><br><small style="color:var(--os-silk);">' + esc(r.role || '') + ' · ' + esc((r.allowedLocations || []).join(',')) + '</small></span>' +
+        '</label>';
+      }).join('');
+      recBox.querySelectorAll('.dm-rec-chk').forEach(chk => {
+        chk.addEventListener('change', () => {
+          if (chk.checked) selectedIds.add(chk.value);
+          else selectedIds.delete(chk.value);
+          updateCount();
+        });
+      });
+    };
+
+    if (recSearch) recSearch.addEventListener('input', drawRecipients);
+    const qf = $('dmQuickFilters');
+    if (qf) {
+      qf.addEventListener('click', ev => {
+        const btn = ev.target.closest('button[data-dm-filter]');
+        if (!btn) return;
+        const f = btn.dataset.dmFilter;
+        if (f === 'NONE') selectedIds.clear();
+        else if (f === 'ALL') allRecipients.forEach(r => selectedIds.add(r.userId));
+        else {
+          selectedIds.clear();
+          allRecipients.filter(r => (r.allowedLocations || []).indexOf(f) !== -1).forEach(r => selectedIds.add(r.userId));
+        }
+        drawRecipients();
+        updateCount();
+      });
+    }
+
+    const loadHistory = async () => {
+      const hBox = $('dmHistoryBox');
+      if (!hBox) return;
+      try {
+        const res = await window.SonaApi.getDmAdminList();
+        if (!res || !res.success) {
+          hBox.innerHTML = '<p class="module-desc">Konnte Verlauf nicht laden.</p>';
+          return;
+        }
+        const entries = Array.isArray(res.entries) ? res.entries : [];
+        if (!entries.length) {
+          hBox.innerHTML = '<p class="module-desc">Noch keine Direktnachrichten gesendet.</p>';
+          return;
+        }
+        hBox.innerHTML = entries.map(e => {
+          const dt = e.erstelltAm ? new Date(e.erstelltAm).toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' }) : '';
+          const recBadges = (e.recipients || []).map(r =>
+            '<span class="badge" style="font-size:11px;' + (r.confirmed ? 'border-color:rgba(126,200,137,0.5);color:var(--os-green);' : 'border-color:rgba(230,180,85,0.45);color:var(--os-amber);') + '">' +
+              esc(r.name) + (r.confirmed ? ' ✓' : ' (ausstehend)') +
+            '</span>'
+          ).join(' ');
+          return '<div style="padding:12px;border:1px solid var(--os-line);border-radius:8px;margin-bottom:10px;background:rgba(255,255,255,0.02);">' +
+            '<div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;align-items:flex-start;">' +
+              '<div>' +
+                '<strong style="color:var(--os-cream);">' + esc(e.thema) + '</strong>' +
+                '<div style="font-size:11.5px;color:var(--os-silk);margin-top:2px;">Von ' + esc(e.autorName) + (dt ? ' · ' + esc(dt) : '') + ' · Bestätigt: <b>' + esc(e.confirmedCount) + ' / ' + esc(e.totalCount) + '</b></div>' +
+              '</div>' +
+              '<button type="button" class="btn btn-sm dm-del-btn" data-dm-id="' + esc(e.dmId) + '" style="color:#f87171;border-color:rgba(248,113,113,0.35);">Löschen</button>' +
+            '</div>' +
+            (e.text ? '<p style="margin:8px 0 0;font-size:12.5px;color:var(--os-silk);white-space:pre-wrap;">' + esc(e.text) + '</p>' : '') +
+            '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;">' + recBadges + '</div>' +
+          '</div>';
+        }).join('');
+        hBox.querySelectorAll('.dm-del-btn').forEach(btn => {
+          btn.addEventListener('click', async () => {
+            btn.disabled = true;
+            try {
+              const dRes = await window.SonaApi.deleteDirectMessage(btn.dataset.dmId);
+              if (dRes && dRes.success) {
+                showToast('Direktnachricht entfernt.');
+                loadHistory();
+              }
+            } finally {
+              btn.disabled = false;
+            }
+          });
+        });
+      } catch (err) {
+        hBox.innerHTML = '<p class="module-desc">Fehler beim Laden.</p>';
+      }
+    };
+
+    const reloadBtn = $('btnReloadDmList');
+    if (reloadBtn) reloadBtn.addEventListener('click', loadHistory);
+
+    const btnSend = $('btnSendDm');
+    if (btnSend) {
+      btnSend.addEventListener('click', async () => {
+        const thema = ($('dmThema') && $('dmThema').value || '').trim();
+        const text = ($('dmText') && $('dmText').value || '').trim();
+        const linkUrl = ($('dmLinkUrl') && $('dmLinkUrl').value || '').trim();
+        const fileInp = $('dmFileInput');
+        const file = fileInp && fileInp.files && fileInp.files[0];
+
+        if (!selectedIds.size) {
+          if (msgEl) { msgEl.style.color = '#f87171'; msgEl.textContent = 'Bitte mindestens einen Mitarbeiter auswählen.'; }
+          return;
+        }
+        if (thema.length < 2) {
+          if (msgEl) { msgEl.style.color = '#f87171'; msgEl.textContent = 'Bitte ein Thema eingeben.'; }
+          return;
+        }
+        if (!text && !linkUrl && !file) {
+          if (msgEl) { msgEl.style.color = '#f87171'; msgEl.textContent = 'Bitte Text, Link oder eine Datei angeben.'; }
+          return;
+        }
+        if (file && file.size > 10 * 1024 * 1024) {
+          if (msgEl) { msgEl.style.color = '#f87171'; msgEl.textContent = 'Datei ist größer als 10 MB.'; }
+          return;
+        }
+
+        btnSend.disabled = true;
+        btnSend.textContent = 'Sendet…';
+        if (msgEl) msgEl.textContent = '';
+
+        try {
+          let fileBase64 = '';
+          let fileName = '';
+          let fileMimeType = '';
+          if (file) {
+            fileName = file.name || 'Anhang';
+            fileMimeType = file.type || 'application/octet-stream';
+            fileBase64 = await new Promise((resolve, reject) => {
+              const r = new FileReader();
+              r.onload = () => resolve(String(r.result || ''));
+              r.onerror = () => reject(new Error('Datei konnte nicht gelesen werden.'));
+              r.readAsDataURL(file);
+            });
+          }
+
+          const res = await window.SonaApi.sendDirectMessage({
+            thema: thema,
+            text: text,
+            linkUrl: linkUrl,
+            recipientIds: Array.from(selectedIds),
+            fileName: fileName,
+            fileMimeType: fileMimeType,
+            fileBase64: fileBase64
+          });
+          if (!res || !res.success) {
+            if (msgEl) { msgEl.style.color = '#f87171'; msgEl.textContent = (res && res.error) || 'Senden fehlgeschlagen.'; }
+            return;
+          }
+          if ($('dmThema')) $('dmThema').value = '';
+          if ($('dmText')) $('dmText').value = '';
+          if ($('dmLinkUrl')) $('dmLinkUrl').value = '';
+          if ($('dmFileInput')) $('dmFileInput').value = '';
+          if (msgEl) { msgEl.style.color = 'var(--os-green)'; msgEl.textContent = 'Pflicht-Popup an ' + res.recipientCount + ' Mitarbeiter gesendet.'; }
+          showToast('Pflicht-Popup gesendet.');
+          loadHistory();
+        } catch (err) {
+          if (msgEl) { msgEl.style.color = '#f87171'; msgEl.textContent = 'Fehler: ' + (err && err.message ? err.message : String(err)); }
+        } finally {
+          btnSend.disabled = false;
+          btnSend.textContent = 'Pflicht-Popup senden';
+        }
+      });
+    }
+
+    try {
+      const rRes = await window.SonaApi.getDmRecipients();
+      allRecipients = (rRes && rRes.success && Array.isArray(rRes.recipients)) ? rRes.recipients : [];
+      drawRecipients();
+      updateCount();
+    } catch (e) {
+      if (recBox) recBox.innerHTML = '<p class="module-desc">Mitarbeiterliste konnte nicht geladen werden.</p>';
+    }
+    loadHistory();
   }
 
   async function renderAdminSourcesView() {
@@ -3643,7 +3980,10 @@
     setTimeout(checkForAppUpdate, 5000);
     setInterval(checkForAppUpdate, 180000);
     document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'visible') checkForAppUpdate();
+      if (document.visibilityState === 'visible') {
+        checkForAppUpdate();
+        if (STATE.session) checkAndShowPendingDirectMessages(STATE.session);
+      }
     });
     window.addEventListener('online', checkForAppUpdate);
 

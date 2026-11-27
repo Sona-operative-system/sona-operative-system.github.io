@@ -381,6 +381,12 @@
       moduleKey: moduleKey,
       standortId: standortId
     }),
-    getAdminSources: () => callPost('os_admin_sources', {})
+    getAdminSources: () => callPost('os_admin_sources', {}),
+    getDmRecipients: () => callPost('os_dm_recipients', {}),
+    sendDirectMessage: (payload) => callPost('os_dm_send', payload || {}),
+    getDmAdminList: () => callPost('os_dm_admin_list', {}),
+    deleteDirectMessage: (dmId) => callPost('os_dm_delete', { dmId: dmId }),
+    getPendingDirectMessages: () => callPost('os_dm_pending', {}),
+    confirmDirectMessage: (dmId) => callPost('os_dm_confirm', { dmId: dmId })
   };
 })();
