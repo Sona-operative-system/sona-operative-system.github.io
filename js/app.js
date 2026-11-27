@@ -1565,14 +1565,15 @@
     const allChk = box.querySelector('.rbac-tab-all');
     const chips = box.querySelector('.rbac-tab-chips');
     const items = box.querySelectorAll('.rbac-tab-item');
+    box.classList.remove('hidden');
     if (!enabled) {
-      box.classList.add('hidden');
+      box.classList.add('rbac-tabs-box-inactive');
       if (allChk) allChk.checked = false;
       if (chips) chips.classList.remove('disabled');
       items.forEach(c => { c.checked = false; });
       return;
     }
-    box.classList.remove('hidden');
+    box.classList.remove('rbac-tabs-box-inactive');
     if (defaultAllOnEnable) {
       const hasAny = (allChk && allChk.checked) || Array.from(items).some(c => c.checked);
       if (!hasAny) {
@@ -1583,15 +1584,36 @@
     }
   }
 
-  function wireTabBoxToggleEvents(rootEl) {
+  function wireTabBoxToggleEvents(rootEl, resolveModCheckbox) {
     if (!rootEl) return;
     rootEl.querySelectorAll('.rbac-tab-all').forEach(chk => {
       chk.addEventListener('change', () => {
         const box = chk.closest('.rbac-tabs-box');
+        const modKey = chk.dataset.tabmod || (box && box.dataset.tabmod) || '';
         const chips = box && box.querySelector('.rbac-tab-chips');
         if (chips) chips.classList.toggle('disabled', chk.checked);
         if (chk.checked && box) {
+          box.classList.remove('rbac-tabs-box-inactive');
           box.querySelectorAll('.rbac-tab-item').forEach(c => { c.checked = true; });
+          const modChk = typeof resolveModCheckbox === 'function' ? resolveModCheckbox(box, modKey) : null;
+          if (modChk && !modChk.checked) modChk.checked = true;
+        }
+      });
+    });
+    rootEl.querySelectorAll('.rbac-tab-item').forEach(itemChk => {
+      itemChk.addEventListener('change', () => {
+        const box = itemChk.closest('.rbac-tabs-box');
+        if (!box) return;
+        const modKey = itemChk.dataset.tabmod || box.dataset.tabmod || '';
+        const allChk = box.querySelector('.rbac-tab-all');
+        const anyChecked = (allChk && allChk.checked) || box.querySelectorAll('.rbac-tab-item:checked').length > 0;
+        const modChk = typeof resolveModCheckbox === 'function' ? resolveModCheckbox(box, modKey) : null;
+        if (anyChecked) {
+          box.classList.remove('rbac-tabs-box-inactive');
+          if (modChk && !modChk.checked) modChk.checked = true;
+        } else {
+          box.classList.add('rbac-tabs-box-inactive');
+          if (modChk && modChk.checked) modChk.checked = false;
         }
       });
     });
@@ -2692,7 +2714,15 @@
         });
       });
 
-      wireTabBoxToggleEvents(tbody);
+      wireTabBoxToggleEvents(tbody, (box, modKey) => {
+        const detailRow = box.closest('tr.rbac-tabs-row');
+        if (!detailRow) return null;
+        const mainRow = tbody.querySelector('tr.rbac-main-row[data-idx="' + detailRow.dataset.tabsFor + '"]');
+        if (!mainRow) return null;
+        return modKey === 'admin'
+          ? mainRow.querySelector('.rbac-admin')
+          : mainRow.querySelector('.rbac-mod[data-mod="' + modKey + '"]');
+      });
 
       tbody.querySelectorAll('tr.rbac-main-row').forEach(tr => {
         const idx = tr.dataset.idx;
@@ -2939,7 +2969,10 @@
       renderTabPermissionBox('init', 'operations', 'Operations – Tab-Freigaben', STATE.tabCatalog.operations || [], mods.operations ? 'ALL' : []) +
       renderTabPermissionBox('init', 'performance', 'Performance – Tab-Freigaben', STATE.tabCatalog.performance || [], mods.performance ? 'ALL' : []) +
       renderTabPermissionBox('init', 'admin', 'Admin – Unterebenen', STATE.tabCatalog.admin || [], mods.adminMatrix ? 'ALL' : []);
-    wireTabBoxToggleEvents(tabsBox);
+    wireTabBoxToggleEvents(tabsBox, (box, modKey) => {
+      const attr = modKey === 'admin' ? 'adminMatrix' : modKey;
+      return wrap.querySelector('.user-init-mod[data-mod="' + attr + '"]');
+    });
 
     ['rezeptur', 'einkauf', 'operations', 'performance', 'adminMatrix'].forEach(modAttr => {
       const tabModKey = modAttr === 'adminMatrix' ? 'admin' : modAttr;

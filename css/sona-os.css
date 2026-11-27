@@ -1500,6 +1500,13 @@ textarea.ops-textarea {
   cursor: pointer;
 }
 
+.rbac-tabs-box-inactive {
+  opacity: 0.58;
+  border-style: dashed;
+}
+.rbac-tabs-box-inactive:hover {
+  opacity: 0.92;
+}
 .rbac-tab-chips.disabled {
   opacity: 0.4;
   pointer-events: none;
