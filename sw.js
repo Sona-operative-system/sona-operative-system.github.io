@@ -1,6 +1,6 @@
 'use strict';
 
-const SONA_OS_SHELL_CACHE = 'sona-os-shell-v27';
+const SONA_OS_SHELL_CACHE = 'sona-os-shell-v28';
 const SONA_OS_SHELL_ASSETS = [
   './',
   './index.html',
@@ -61,8 +61,24 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Stale-While-Revalidate for same-origin static shell files (instant load + background update)
+  // Network-First for HTML navigation (always fresh), Stale-While-Revalidate for static JS/CSS/assets
   if (url.origin !== self.location.origin) return;
+
+  const isHtmlNav = req.mode === 'navigate' || url.pathname === '/' || url.pathname.endsWith('/index.html');
+  if (isHtmlNav) {
+    event.respondWith(
+      fetch(req)
+        .then((res) => {
+          if (res && res.ok) {
+            const copy = res.clone();
+            caches.open(SONA_OS_SHELL_CACHE).then((c) => c.put(req, copy)).catch(() => {});
+          }
+          return res;
+        })
+        .catch(() => caches.match(req))
+    );
+    return;
+  }
 
   event.respondWith(
     caches.open(SONA_OS_SHELL_CACHE).then((cache) =>
