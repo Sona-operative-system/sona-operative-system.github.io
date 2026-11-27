@@ -1282,8 +1282,18 @@
     const cacheKey = 'sona_os_resmio_' + locId + '_' + todayKey;
 
     const applySummary = function(data) {
-      if (!data || !data.success || !data.configured) {
+      if (!data) {
         box.classList.add('hidden');
+        return;
+      }
+      if (data.configured === false) {
+        box.classList.add('hidden');
+        return;
+      }
+      if (!data.success) {
+        valEl.textContent = 'n. v.';
+        box.title = data.detail || data.error || 'Resmio-Daten nicht verfügbar';
+        box.classList.remove('hidden');
         return;
       }
       const resCount = Number(data.reservations || 0);
