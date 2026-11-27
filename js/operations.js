@@ -2975,7 +2975,7 @@
           : '';
         container.innerHTML =
           '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px;flex-wrap:wrap;">' +
-            '<button type="button" id="btnOpsBackHome" class="btn btn-sm">← Zurück zu Operations</button>' +
+            '<button type="button" id="btnOpsBackHome" class="btn btn-sm">← Zurück zur Startseite</button>' +
             '<span class="kicker">' + esc(title) + '</span>' +
           '</div>' +
           '<div id="opsTabPane"></div>' +
@@ -2984,9 +2984,7 @@
         if (backBtn) {
           backBtn.addEventListener('click', function() {
             if (window.SonaApp && window.SonaApp.openView) {
-              window.SonaApp.openView('mod_operations');
-            } else {
-              renderOpsHome();
+              window.SonaApp.openView('overview');
             }
           });
         }
