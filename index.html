@@ -16,7 +16,7 @@
   <link rel="preconnect" href="https://script.google.com" crossorigin>
   <link rel="preconnect" href="https://script.googleusercontent.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="./css/sona-os.css?v=34">
+  <link rel="stylesheet" href="./css/sona-os.css?v=35">
 </head>
 <body>
 
@@ -175,10 +175,17 @@
       <nav id="osNavList" class="os-nav-list" aria-label="SONA OS Navigation"></nav>
 
       <div class="sidebar-footer">
-        <div id="sidebarUserMeta"></div>
         <button type="button" id="btnInstallPwa" class="btn btn-primary btn-sm hidden" style="width:100%;">App installieren</button>
-        <button type="button" id="btnOpenChangePw" class="btn btn-sm" style="width:100%;">Passwort ändern</button>
-        <button type="button" id="btnLockLogout" class="btn btn-sm" style="width:100%;">Abmelden</button>
+        <div class="sidebar-user-wrap">
+          <div id="userSettingsMenu" class="user-settings-popover hidden" role="menu">
+            <button type="button" id="btnOpenChangePw" class="user-settings-item" role="menuitem">Passwort ändern</button>
+            <button type="button" id="btnLockLogout" class="user-settings-item user-settings-item-danger" role="menuitem">Abmelden</button>
+          </div>
+          <div class="sidebar-user-row">
+            <div id="sidebarUserMeta"></div>
+            <button type="button" id="btnUserSettings" class="sidebar-gear-btn" title="Einstellungen" aria-label="Benutzer-Einstellungen" aria-haspopup="true" aria-expanded="false">⚙</button>
+          </div>
+        </div>
       </div>
     </aside>
 
@@ -400,14 +407,14 @@
     </div>
   </div>
 
-  <script defer src="./js/config.js?v=34"></script>
-  <script defer src="./js/loader.js?v=34"></script>
-  <script defer src="./js/api.js?v=34"></script>
-  <script defer src="./js/bestand.js?v=34"></script>
-  <script defer src="./js/controlling.js?v=34"></script>
-  <script defer src="./js/einkauf.js?v=34"></script>
-  <script defer src="./js/rezeptur.js?v=34"></script>
-  <script defer src="./js/operations.js?v=34"></script>
-  <script defer src="./js/app.js?v=34"></script>
+  <script defer src="./js/config.js?v=35"></script>
+  <script defer src="./js/loader.js?v=35"></script>
+  <script defer src="./js/api.js?v=35"></script>
+  <script defer src="./js/bestand.js?v=35"></script>
+  <script defer src="./js/controlling.js?v=35"></script>
+  <script defer src="./js/einkauf.js?v=35"></script>
+  <script defer src="./js/rezeptur.js?v=35"></script>
+  <script defer src="./js/operations.js?v=35"></script>
+  <script defer src="./js/app.js?v=35"></script>
 </body>
 </html>

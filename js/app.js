@@ -13,7 +13,7 @@
     allowedBereiche: ['ALLE', 'FOOD_SUSHI', 'BEVERAGE_DESSERT', 'KUECHE', 'BAR', 'SERVICE'],
     adminNotificationEmail: 'j.helmeke97@gmail.com',
     lastOtpResult: null,
-    tabCatalog: { rezeptur: [], einkauf: [], operations: [] },
+    tabCatalog: { rezeptur: [], einkauf: [], operations: [], performance: [], admin: [] },
     openPillars: { OPERATIONS: false, EVENTS: false, WARENWIRTSCHAFT: false, CONTROLLING: false, PERFORMANCE: false, ADMIN: false },
     auditEntries: [],
     moduleFrames: {},
@@ -409,6 +409,16 @@
     }
   }
 
+  function hasAdminTab(session, tabId) {
+    if (!session || !session.permissions) return false;
+    const tp = session.permissions.tabPermissions || {};
+    const adm = tp.admin;
+    if (session.permissions.adminMatrix) {
+      return !adm || adm === 'ALL' || (Array.isArray(adm) && adm.indexOf(tabId) !== -1);
+    }
+    return Array.isArray(adm) && adm.indexOf(tabId) !== -1;
+  }
+
   function renderAuthenticatedShell() {
     const s = STATE.session;
     if (!s || !s.permissions) {
@@ -465,10 +475,17 @@
       .concat(opsNavItems)
       .concat(mods.filter(m => m.key !== 'operations').map(m => ({ key: 'mod_' + m.key, title: m.title, pillar: m.pillar || 'WARENWIRTSCHAFT' })));
 
-    if (s.permissions.adminMatrix) {
-      navItems.push({ key: 'rbac', title: 'Rechte-Matrix', pillar: 'ADMIN' });
-      navItems.push({ key: 'audit_log', title: 'Aktivitätsprotokoll', pillar: 'ADMIN' });
+    const adminNavItems = [];
+    if (hasAdminTab(s, 'rbac')) {
+      adminNavItems.push({ key: 'rbac', title: 'Rechte-Matrix', pillar: 'ADMIN' });
     }
+    if (hasAdminTab(s, 'audit_log')) {
+      adminNavItems.push({ key: 'audit_log', title: 'Aktivitätsprotokoll', pillar: 'ADMIN' });
+    }
+    if (hasAdminTab(s, 'rundmail')) {
+      adminNavItems.push({ key: 'rundmail', title: 'Rundmail', pillar: 'ADMIN' });
+    }
+    adminNavItems.forEach(it => navItems.push(it));
 
     const validNonNavView = STATE.activeView === 'mod_operations';
     if (!validNonNavView && !navItems.some(x => x.key === STATE.activeView)) {
@@ -515,7 +532,7 @@
 
     navHtml += pillarGroups.map(renderPillarGroupHtml).join('');
 
-    if (s.permissions.adminMatrix) {
+    if (adminNavItems.length) {
       navHtml +=
         '<div class="os-nav-divider"></div>' +
         renderPillarGroupHtml({ id: 'ADMIN', label: 'Admin' });
@@ -743,7 +760,9 @@
       renderOverview();
       return;
     }
-    if ((STATE.activeView === 'rbac' || STATE.activeView === 'audit_log') && s.permissions.adminMatrix) {
+    if ((STATE.activeView === 'rbac' && hasAdminTab(s, 'rbac')) ||
+        (STATE.activeView === 'audit_log' && hasAdminTab(s, 'audit_log')) ||
+        (STATE.activeView === 'rundmail' && hasAdminTab(s, 'rundmail'))) {
       const adminGrp = document.querySelector('#osNavList .os-nav-group[data-pillar="ADMIN"]');
       if (adminGrp) {
         adminGrp.classList.add('open');
@@ -752,6 +771,8 @@
       showMainContentPane();
       if (STATE.activeView === 'audit_log') {
         renderAuditLogView();
+      } else if (STATE.activeView === 'rundmail') {
+        renderRundmailView();
       } else {
         renderRbacMatrixView();
       }
@@ -946,7 +967,7 @@
       '<section class="home-section-card">' +
         '<div class="card-head" style="margin-bottom:2px;">' +
           '<div>' +
-            '<div class="kicker">1. Tägliche Routine</div>' +
+            '<div class="kicker">Tägliche Routine</div>' +
             '<h3>Routineaufgaben</h3>' +
           '</div>' +
         '</div>' +
@@ -958,7 +979,7 @@
     const newsSectionHtml =
       '<section class="home-section-card">' +
         '<div class="card-head" style="margin-bottom:4px;">' +
-          '<div><div class="kicker">2. Team-Briefing &amp; Dokumente</div><h3>Was gibt\'s Neues?</h3></div>' +
+          '<div><div class="kicker">Team-Briefing &amp; Dokumente</div><h3>Was gibt\'s Neues?</h3></div>' +
           (canManageNews
             ? '<button type="button" class="btn btn-sm home-quick-view-btn" data-quick-view="ops_tagesuebersicht">+ Info</button>'
             : '') +
@@ -970,7 +991,7 @@
       '<section class="home-section-card home-section-86">' +
         '<div class="card-head" style="margin-bottom:4px;">' +
           '<div>' +
-            '<div class="kicker">3. Aktuell nicht verfügbar</div>' +
+            '<div class="kicker">Aktuell nicht verfügbar</div>' +
             '<h3>86-Liste</h3>' +
           '</div>' +
           (opsMod
@@ -984,7 +1005,7 @@
       '<section class="home-section-card">' +
         '<div class="card-head" style="margin-bottom:4px;">' +
           '<div>' +
-            '<div class="kicker">4. Team-Austausch &amp; Ideen (7 Tage sichtbar)</div>' +
+            '<div class="kicker">Team-Austausch &amp; Ideen (7 Tage sichtbar)</div>' +
             '<h3>Feedback</h3>' +
           '</div>' +
           (opsMod
@@ -1188,9 +1209,9 @@
   }
 
   function readTabPermissionsFromContainer(containerEl) {
-    const tabPermissions = { rezeptur: 'ALL', einkauf: 'ALL', operations: 'ALL' };
+    const tabPermissions = { rezeptur: 'ALL', einkauf: 'ALL', operations: 'ALL', performance: 'ALL', admin: 'ALL' };
     if (!containerEl) return tabPermissions;
-    ['rezeptur', 'einkauf', 'operations'].forEach(modKey => {
+    ['rezeptur', 'einkauf', 'operations', 'performance', 'admin'].forEach(modKey => {
       const box = containerEl.querySelector('.rbac-tabs-box[data-tabmod="' + modKey + '"]');
       if (!box) return;
       const allChk = box.querySelector('.rbac-tab-all');
@@ -1358,6 +1379,186 @@
     $('btnReloadRbac').addEventListener('click', loadRbacTable);
     renderOtpResultBanner();
     await loadRbacTable();
+  }
+
+  async function renderRundmailView() {
+    const container = $('osMainContent');
+    if (!container) return;
+    container.innerHTML =
+      '<div class="card">' +
+        '<div class="card-head">' +
+          '<div>' +
+            '<div class="kicker">Administration · Kommunikation</div>' +
+            '<h3>Rundmail an Mitarbeiter</h3>' +
+          '</div>' +
+          '<button type="button" class="btn btn-sm" id="btnReloadRundmail">Empfänger neu laden</button>' +
+        '</div>' +
+        '<p class="module-desc" style="margin-bottom:14px;">Sende Nachrichten und Dateianhänge (PDF, Bilder, Dokumente bis 8 MB gesamt) gezielt an die hinterlegten Mitarbeiter-E-Mails (BCC-geschützt).</p>' +
+        '<div id="rundmailMsg" style="font-size:12.5px;margin-bottom:10px;"></div>' +
+        '<div class="form-field">' +
+          '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px;">' +
+            '<label class="kicker" style="margin:0;">Empfänger auswählen (<span id="rundmailSelCount">0</span> ausgewählt)</label>' +
+            '<div style="display:flex;gap:6px;flex-wrap:wrap;" id="rundmailQuickFilters">' +
+              '<button type="button" class="btn btn-sm" data-rm-filter="ALL">Alle</button>' +
+              '<button type="button" class="btn btn-sm" data-rm-filter="LOC_001">Karli</button>' +
+              '<button type="button" class="btn btn-sm" data-rm-filter="LOC_002">Prager</button>' +
+              '<button type="button" class="btn btn-sm" data-rm-filter="BER_KUECHE">Küche</button>' +
+              '<button type="button" class="btn btn-sm" data-rm-filter="BER_BAR">Bar</button>' +
+              '<button type="button" class="btn btn-sm" data-rm-filter="BER_SERVICE">Service</button>' +
+              '<button type="button" class="btn btn-sm" data-rm-filter="NONE">Keine</button>' +
+            '</div>' +
+          '</div>' +
+          '<div id="rundmailRecipientsBox" class="rundmail-recipients-grid"><p class="module-desc" style="margin:0;">Lade Mitarbeiterliste …</p></div>' +
+        '</div>' +
+        '<div class="form-field">' +
+          '<label class="kicker" for="rundmailSubject">Betreff</label>' +
+          '<input type="text" id="rundmailSubject" class="input-control" maxlength="160" placeholder="z. B. Neuer Dienstplan / Einladung Team-Meeting">' +
+        '</div>' +
+        '<div class="form-field">' +
+          '<label class="kicker" for="rundmailBody">Nachricht</label>' +
+          '<textarea id="rundmailBody" class="input-control" rows="6" maxlength="10000" placeholder="Nachricht an das Team …"></textarea>' +
+        '</div>' +
+        '<div class="form-field">' +
+          '<label class="kicker" for="rundmailFiles">Dateianhänge (optional, bis zu 5 Dateien, max. 8 MB gesamt)</label>' +
+          '<input type="file" id="rundmailFiles" class="input-control" multiple accept=".pdf,image/*,.doc,.docx,.xls,.xlsx,.csv,.txt">' +
+        '</div>' +
+        '<div style="display:flex;justify-content:flex-end;gap:10px;margin-top:10px;">' +
+          '<button type="button" id="btnSendRundmail" class="btn btn-primary">Rundmail senden</button>' +
+        '</div>' +
+      '</div>';
+
+    let recipients = [];
+    const updateCount = () => {
+      const n = container.querySelectorAll('.rm-rec-chk:checked').length;
+      const el = $('rundmailSelCount');
+      if (el) el.textContent = String(n);
+    };
+
+    const loadRecs = async () => {
+      const box = $('rundmailRecipientsBox');
+      if (!box) return;
+      box.innerHTML = '<p class="module-desc" style="margin:0;">Lade Mitarbeiterliste …</p>';
+      try {
+        const res = await window.SonaApi.getRundmailRecipients();
+        if (!res || !res.success) {
+          const msg = (res && res.error) || 'Empfänger konnten nicht geladen werden.';
+          box.innerHTML = '<p class="module-desc" style="margin:0;">' + esc(msg.indexOf('Unbekannte Aktion') !== -1 ? 'Rundmail-Backend wartet noch auf @sync.' : msg) + '</p>';
+          return;
+        }
+        recipients = Array.isArray(res.recipients) ? res.recipients : [];
+        if (!recipients.length) {
+          box.innerHTML = '<p class="module-desc" style="margin:0;">Keine aktiven Mitarbeiter mit E-Mail-Adresse gefunden.</p>';
+          return;
+        }
+        box.innerHTML = recipients.map(r =>
+          '<label class="rundmail-rec-chip">' +
+            '<input type="checkbox" class="rm-rec-chk" value="' + esc(r.userId) + '" data-locs="' + esc((r.allowedLocations || []).join(',')) + '" data-bereich="' + esc(r.bereich || 'ALLE') + '">' +
+            '<div>' +
+              '<div style="font-weight:600;color:var(--os-cream);">' + esc(r.name) + '</div>' +
+              '<div style="font-size:11px;color:var(--os-silk);">' + esc(r.email) + '</div>' +
+              '<div style="font-size:10.5px;color:var(--os-silk);opacity:0.8;">' + esc(r.bereich || 'ALLE') + ' · ' + esc((r.allowedLocations || []).join('/')) + '</div>' +
+            '</div>' +
+          '</label>'
+        ).join('');
+        box.querySelectorAll('.rm-rec-chk').forEach(c => c.addEventListener('change', updateCount));
+        updateCount();
+      } catch (err) {
+        box.innerHTML = '<p class="module-desc" style="margin:0;">Verbindungsfehler beim Laden der Empfänger.</p>';
+      }
+    };
+
+    const filtersWrap = $('rundmailQuickFilters');
+    if (filtersWrap) {
+      filtersWrap.querySelectorAll('[data-rm-filter]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const mode = btn.dataset.rmFilter;
+          container.querySelectorAll('.rm-rec-chk').forEach(chk => {
+            const locs = String(chk.dataset.locs || '').split(',');
+            const ber = String(chk.dataset.bereich || '').toUpperCase();
+            if (mode === 'ALL') chk.checked = true;
+            else if (mode === 'NONE') chk.checked = false;
+            else if (mode === 'LOC_001') chk.checked = locs.indexOf('001') !== -1;
+            else if (mode === 'LOC_002') chk.checked = locs.indexOf('002') !== -1;
+            else if (mode === 'BER_KUECHE') chk.checked = ber === 'KUECHE' || ber === 'FOOD_SUSHI';
+            else if (mode === 'BER_BAR') chk.checked = ber === 'BAR' || ber === 'BEVERAGE_DESSERT';
+            else if (mode === 'BER_SERVICE') chk.checked = ber === 'SERVICE';
+          });
+          updateCount();
+        });
+      });
+    }
+
+    $('btnReloadRundmail').addEventListener('click', loadRecs);
+    $('btnSendRundmail').addEventListener('click', async () => {
+      const msgEl = $('rundmailMsg');
+      const subject = ($('rundmailSubject') && $('rundmailSubject').value || '').trim();
+      const body = ($('rundmailBody') && $('rundmailBody').value || '').trim();
+      const recipientIds = [];
+      container.querySelectorAll('.rm-rec-chk:checked').forEach(c => recipientIds.push(c.value));
+
+      if (!recipientIds.length) {
+        if (msgEl) { msgEl.style.color = '#f87171'; msgEl.textContent = 'Bitte mindestens einen Empfänger auswählen.'; }
+        return;
+      }
+      if (subject.length < 2 || body.length < 2) {
+        if (msgEl) { msgEl.style.color = '#f87171'; msgEl.textContent = 'Bitte Betreff und Nachricht ausfüllen.'; }
+        return;
+      }
+
+      const filesInput = $('rundmailFiles');
+      const fileList = (filesInput && filesInput.files) ? Array.from(filesInput.files).slice(0, 5) : [];
+      let totalSize = 0;
+      for (let i = 0; i < fileList.length; i++) totalSize += fileList[i].size;
+      if (totalSize > 8 * 1024 * 1024) {
+        if (msgEl) { msgEl.style.color = '#f87171'; msgEl.textContent = 'Anhänge überschreiten das Gesamtlimit von 8 MB.'; }
+        return;
+      }
+
+      const btn = $('btnSendRundmail');
+      btn.disabled = true;
+      btn.textContent = 'Sendet…';
+      if (msgEl) msgEl.textContent = '';
+
+      try {
+        const attachments = [];
+        for (let i = 0; i < fileList.length; i++) {
+          const f = fileList[i];
+          const b64 = await new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(String(reader.result || ''));
+            reader.onerror = () => reject(new Error('Datei konnte nicht gelesen werden.'));
+            reader.readAsDataURL(f);
+          });
+          attachments.push({ fileName: f.name, mimeType: f.type || 'application/octet-stream', base64: b64 });
+        }
+
+        const res = await window.SonaApi.sendRundmail({
+          recipientIds: recipientIds,
+          subject: subject,
+          body: body,
+          attachments: attachments
+        });
+        if (!res || !res.success) {
+          if (msgEl) { msgEl.style.color = '#f87171'; msgEl.textContent = (res && res.error) || 'Versand fehlgeschlagen.'; }
+          return;
+        }
+        if (msgEl) {
+          msgEl.style.color = '#6ee7b7';
+          msgEl.textContent = '✓ Rundmail an ' + res.sentCount + ' Mitarbeiter gesendet' + (res.attachmentCount ? (' (' + res.attachmentCount + ' Anhang/Anhänge)') : '') + '.';
+        }
+        if ($('rundmailSubject')) $('rundmailSubject').value = '';
+        if ($('rundmailBody')) $('rundmailBody').value = '';
+        if (filesInput) filesInput.value = '';
+        showToast('Rundmail an ' + res.sentCount + ' Mitarbeiter gesendet.');
+      } catch (err) {
+        if (msgEl) { msgEl.style.color = '#f87171'; msgEl.textContent = 'Verbindungsfehler: ' + (err && err.message ? err.message : String(err)); }
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Rundmail senden';
+      }
+    });
+
+    await loadRecs();
   }
 
   function formatAuditTimestamp(isoStr) {
@@ -1573,7 +1774,7 @@
       }
       STATE.pendingRequests = res.pendingRequests || [];
       STATE.rbacEntries = res.entries || [];
-      STATE.tabCatalog = res.tabCatalog || { rezeptur: [], einkauf: [], operations: [] };
+      STATE.tabCatalog = res.tabCatalog || { rezeptur: [], einkauf: [], operations: [], performance: [], admin: [] };
       STATE.rbacLocations = (Array.isArray(res.locations) && res.locations.length)
         ? res.locations
         : window.SONA_OS_DEFAULTS.LOCATIONS;
@@ -1591,8 +1792,8 @@
       const allLocations = STATE.rbacLocations;
       tbody.innerHTML = STATE.rbacEntries.map((u, idx) => {
         const locs = u.allowedLocations || [];
-        const tp = u.tabPermissions || { rezeptur: 'ALL', einkauf: 'ALL', operations: 'ALL' };
-        const isPartial = Array.isArray(tp.rezeptur) || Array.isArray(tp.einkauf) || Array.isArray(tp.operations);
+        const tp = u.tabPermissions || { rezeptur: 'ALL', einkauf: 'ALL', operations: 'ALL', performance: 'ALL', admin: 'ALL' };
+        const isPartial = Array.isArray(tp.rezeptur) || Array.isArray(tp.einkauf) || Array.isArray(tp.operations) || Array.isArray(tp.performance) || Array.isArray(tp.admin);
         const statusFlag = u.status && u.status !== 'ACTIVE'
           ? ' · ' + esc(u.status)
           : (u.mustChangePassword ? ' · EINMAL-PW AKTIV' : '');
@@ -1635,6 +1836,8 @@
               renderTabPermissionBox(idx, 'rezeptur', 'Rezepturen – Tab-Freigaben', STATE.tabCatalog.rezeptur || [], tp.rezeptur) +
               renderTabPermissionBox(idx, 'einkauf', 'Einkauf – Tab-Freigaben', STATE.tabCatalog.einkauf || [], tp.einkauf) +
               renderTabPermissionBox(idx, 'operations', 'Operations – Tab-Freigaben', STATE.tabCatalog.operations || [], tp.operations) +
+              renderTabPermissionBox(idx, 'performance', 'Performance – Tab-Freigaben', STATE.tabCatalog.performance || [], tp.performance) +
+              renderTabPermissionBox(idx, 'admin', 'Admin – Unterebenen', STATE.tabCatalog.admin || [], tp.admin) +
             '</div>' +
           '</td>' +
         '</tr>';
@@ -1862,7 +2065,9 @@
     tabsBox.innerHTML =
       renderTabPermissionBox('init', 'rezeptur', 'Rezepturen – Tab-Freigaben', STATE.tabCatalog.rezeptur || [], 'ALL') +
       renderTabPermissionBox('init', 'einkauf', 'Einkauf – Tab-Freigaben', STATE.tabCatalog.einkauf || [], 'ALL') +
-      renderTabPermissionBox('init', 'operations', 'Operations – Tab-Freigaben', STATE.tabCatalog.operations || [], 'ALL');
+      renderTabPermissionBox('init', 'operations', 'Operations – Tab-Freigaben', STATE.tabCatalog.operations || [], 'ALL') +
+      renderTabPermissionBox('init', 'performance', 'Performance – Tab-Freigaben', STATE.tabCatalog.performance || [], 'ALL') +
+      renderTabPermissionBox('init', 'admin', 'Admin – Unterebenen', STATE.tabCatalog.admin || [], 'ALL');
     wireTabBoxToggleEvents(tabsBox);
   }
 
@@ -2254,6 +2459,27 @@
     const btnToggle = $('btnToggleSidebar');
     if (btnToggle) {
       btnToggle.addEventListener('click', () => applySidebarCollapsed(!STATE.sidebarCollapsed));
+    }
+
+    const btnUserSettings = $('btnUserSettings');
+    const userSettingsMenu = $('userSettingsMenu');
+    const closeUserSettings = () => {
+      if (userSettingsMenu) userSettingsMenu.classList.add('hidden');
+      if (btnUserSettings) btnUserSettings.setAttribute('aria-expanded', 'false');
+    };
+    if (btnUserSettings && userSettingsMenu) {
+      btnUserSettings.addEventListener('click', ev => {
+        ev.stopPropagation();
+        const isOpen = !userSettingsMenu.classList.contains('hidden');
+        userSettingsMenu.classList.toggle('hidden', isOpen);
+        btnUserSettings.setAttribute('aria-expanded', isOpen ? 'false' : 'true');
+      });
+      userSettingsMenu.addEventListener('click', () => closeUserSettings());
+      document.addEventListener('click', ev => {
+        if (!userSettingsMenu.classList.contains('hidden') && !ev.target.closest('.sidebar-user-wrap')) {
+          closeUserSettings();
+        }
+      });
     }
     async function switchToLocation(targetLoc) {
       if (!targetLoc || (STATE.session && targetLoc === STATE.session.standortId)) {

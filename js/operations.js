@@ -2712,7 +2712,7 @@
         if (canSchwundInput) {
           cards.push(
             '<button type="button" class="home-tile" data-ops-ext="' + esc(schwundUrl) + '">' +
-              '<div class="home-tile-head"><h4 class="home-tile-title">1. Schwund</h4><span class="home-tile-arrow">↗</span></div>' +
+              '<div class="home-tile-head"><h4 class="home-tile-title">Schwund</h4><span class="home-tile-arrow">↗</span></div>' +
               '<p class="home-tile-desc">Verderb &amp; Überproduktion erfassen</p>' +
             '</button>'
           );
@@ -2720,7 +2720,7 @@
         if (canBruchInput) {
           cards.push(
             '<button type="button" class="home-tile" data-ops-ext="' + esc(bruchUrl) + '">' +
-              '<div class="home-tile-head"><h4 class="home-tile-title">2. Bruch</h4><span class="home-tile-arrow">↗</span></div>' +
+              '<div class="home-tile-head"><h4 class="home-tile-title">Bruch</h4><span class="home-tile-arrow">↗</span></div>' +
               '<p class="home-tile-desc">Glas-, Geschirr- &amp; Flaschenbruch erfassen</p>' +
             '</button>'
           );
@@ -2728,40 +2728,40 @@
         if (canReklamation) {
           cards.push(
             '<button type="button" class="home-tile" data-ops-nav="ops_reklamation">' +
-              '<div class="home-tile-head"><h4 class="home-tile-title">3. Reklamation und Beschwerden</h4><span class="home-tile-arrow">→</span></div>' +
+              '<div class="home-tile-head"><h4 class="home-tile-title">Reklamation und Beschwerden</h4><span class="home-tile-arrow">→</span></div>' +
               '<p class="home-tile-desc">Gästefeedback &amp; Reklamationen dokumentieren</p>' +
             '</button>'
           );
         }
         cards.push(
           '<button type="button" class="home-tile" data-ops-nav="ops_todo">' +
-            '<div class="home-tile-head"><h4 class="home-tile-title">4. To-Do-Liste</h4><span class="home-tile-arrow">→</span></div>' +
+            '<div class="home-tile-head"><h4 class="home-tile-title">To-Do-Liste</h4><span class="home-tile-arrow">→</span></div>' +
             '<p class="home-tile-desc">Aufgaben für Küche, Bar &amp; Service</p>' +
           '</button>'
         );
         cards.push(
           '<button type="button" class="home-tile" data-ops-nav="ops_putzplan">' +
-            '<div class="home-tile-head"><h4 class="home-tile-title">5. Putzplan</h4><span class="home-tile-arrow">→</span></div>' +
+            '<div class="home-tile-head"><h4 class="home-tile-title">Putzplan</h4><span class="home-tile-arrow">→</span></div>' +
             '<p class="home-tile-desc">Tägliche &amp; wöchentliche Reinigungspläne</p>' +
           '</button>'
         );
         if (canStaffRating) {
           cards.push(
             '<button type="button" class="home-tile" data-ops-nav="ops_ranking">' +
-              '<div class="home-tile-head"><h4 class="home-tile-title">6. Mitarbeiter Ranking</h4><span class="home-tile-arrow">→</span></div>' +
+              '<div class="home-tile-head"><h4 class="home-tile-title">Mitarbeiter Ranking</h4><span class="home-tile-arrow">→</span></div>' +
               '<p class="home-tile-desc">Personal Scorecard &amp; Azubi-Entwicklung</p>' +
             '</button>'
           );
         }
         cards.push(
           '<button type="button" class="home-tile" data-ops-nav="ops_86">' +
-            '<div class="home-tile-head"><h4 class="home-tile-title">7. 86-Liste</h4><span class="home-tile-arrow">→</span></div>' +
+            '<div class="home-tile-head"><h4 class="home-tile-title">86-Liste</h4><span class="home-tile-arrow">→</span></div>' +
             '<p class="home-tile-desc">Ausverkaufte Artikel eintragen &amp; täglich prüfen</p>' +
           '</button>'
         );
         cards.push(
           '<button type="button" class="home-tile" data-ops-nav="ops_feedback">' +
-            '<div class="home-tile-head"><h4 class="home-tile-title">8. Feedback</h4><span class="home-tile-arrow">→</span></div>' +
+            '<div class="home-tile-head"><h4 class="home-tile-title">Feedback</h4><span class="home-tile-arrow">→</span></div>' +
             '<p class="home-tile-desc">Ideen, Veranstaltungen &amp; Verbesserungen teilen</p>' +
           '</button>'
         );

@@ -9,6 +9,7 @@
     os_session_check: true,
     os_rbac_list: true,
     os_audit_log: true,
+    os_admin_rundmail_recipients: true,
     os_bestand_dashboard: true,
     os_bestand_detail: true,
     os_controlling_meta: true,
@@ -182,6 +183,8 @@
     saveUser: (user) => callPost('os_user_save', { user: user }),
     deleteUser: (userId) => callPost('os_user_delete', { userId: userId }),
     getAuditLog: (filter) => callPost('os_audit_log', { filter: filter || {} }),
+    getRundmailRecipients: () => callPost('os_admin_rundmail_recipients', {}),
+    sendRundmail: (payload) => callPost('os_admin_rundmail_send', payload || {}),
     getBestandDashboard: (standortId, filter, forceRefresh) => callPost('os_bestand_dashboard', {
       standortId: standortId,
       filter: filter || {},
