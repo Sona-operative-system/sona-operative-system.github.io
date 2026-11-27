@@ -843,8 +843,18 @@
     const canManageNews = !!(opsMod && (lvl === 'ADMIN' || lvl === 'WRITE' || perms.adminMatrix || ['ADMIN', 'FB_MANAGER', 'SERVICELEITUNG', 'SERVICECHEF', 'KUECHENCHEF', 'BARCHEF'].indexOf(role) !== -1));
 
     const quickOpsHtml =
-      (canSchwund ? '<button type="button" class="btn btn-sm home-quick-ops-btn" data-quick-url="' + esc(schwundUrl) + '" title="Schwund im neuen Tab erfassen">+ Schwund</button>' : '') +
-      (canBruch ? '<button type="button" class="btn btn-sm home-quick-ops-btn" data-quick-url="' + esc(bruchUrl) + '" title="Bruch im neuen Tab erfassen">+ Bruch</button>' : '');
+      (canSchwund
+        ? '<button type="button" class="btn btn-sm home-quick-ops-btn home-quick-kpi-btn" data-quick-url="' + esc(schwundUrl) + '" title="Schwund im neuen Tab erfassen">' +
+            '<span class="home-quick-kpi-label">+ Schwund</span>' +
+            '<span id="homeQuickSchwundVal" class="home-quick-kpi-val tabular"></span>' +
+          '</button>'
+        : '') +
+      (canBruch
+        ? '<button type="button" class="btn btn-sm home-quick-ops-btn home-quick-kpi-btn" data-quick-url="' + esc(bruchUrl) + '" title="Bruch im neuen Tab erfassen">' +
+            '<span class="home-quick-kpi-label">+ Bruch</span>' +
+            '<span id="homeQuickBruchVal" class="home-quick-kpi-val tabular"></span>' +
+          '</button>'
+        : '');
 
     const routineLinksHtml =
       (canPutzplan

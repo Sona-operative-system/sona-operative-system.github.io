@@ -1644,6 +1644,24 @@
           }
         }).catch(function() {});
     }
+
+    const schwundValEl = document.getElementById('homeQuickSchwundVal');
+    const bruchValEl = document.getElementById('homeQuickBruchVal');
+    if (schwundValEl || bruchValEl) {
+      const sumKey = 'summary::' + sid + '::LATEST';
+      fetchOpsSwr(sumKey, function() { return window.SonaApi.getOpsMonthlySummary(sid, false, ''); }, false)
+        .then(function(r) {
+          if (!r || r.success === false || r.status === 'IN_VORBEREITUNG') return;
+          const sEl = document.getElementById('homeQuickSchwundVal');
+          const bEl = document.getElementById('homeQuickBruchVal');
+          if (sEl && r.schwund) {
+            sEl.textContent = fmtEur(r.schwund.totalEur || 0);
+          }
+          if (bEl && r.bruch) {
+            bEl.textContent = fmtEur(r.bruch.totalEur || 0);
+          }
+        }).catch(function() {});
+    }
   }
 
   function renderNewsCardsHtml(entries, opts) {
