@@ -1029,8 +1029,9 @@
         if (mods.some(m => m.key === 'operations')) {
           window.SonaOperationsModule.prefetch(STATE.session, 'ops_todo');
           window.SonaOperationsModule.prefetch(STATE.session, 'ops_putzplan');
+          window.SonaOperationsModule.prefetch(STATE.session, 'ops_auswertung');
         }
-      }, 350));
+      }, 200));
     }
 
     const iframeMods = mods.filter(m => m.key !== 'operations' && !!buildDirectEmbeddedUrl(m, session));
@@ -1038,7 +1039,7 @@
       PRELOAD_STATE.timers.push(setTimeout(() => {
         if (!STATE.session || STATE.session.standortId !== session.standortId) return;
         preloadEmbeddedModule(mod);
-      }, 800 + idx * 950));
+      }, 450 + idx * 550));
     });
   }
 
@@ -1225,7 +1226,7 @@
       hostEl.appendChild(iframe);
       container.classList.add('hidden');
       hostEl.classList.remove('hidden');
-      setTimeout(() => window.SonaLoader.hide(), 8000);
+      setTimeout(() => window.SonaLoader.hide(), 2500);
     } catch (err) {
       if (STATE.activeView !== 'mod_' + mod.key) {
         window.SonaLoader.hide();

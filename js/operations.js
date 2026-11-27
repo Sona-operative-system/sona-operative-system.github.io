@@ -65,6 +65,23 @@
     });
   }
 
+  function mutateOpsCache(cacheKey, mutatorFn) {
+    const cached = getOpsCache(cacheKey);
+    if (!cached || !cached.data) return null;
+    try {
+      const snapshot = JSON.parse(JSON.stringify(cached.data));
+      const nextData = mutatorFn(JSON.parse(JSON.stringify(cached.data)));
+      if (nextData) setOpsCache(cacheKey, nextData);
+      return snapshot;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function restoreOpsCacheSnapshot(cacheKey, snapshot) {
+    if (snapshot) setOpsCache(cacheKey, snapshot);
+  }
+
   async function fetchOpsSwr(cacheKey, fetcher, forceRefresh, onBackgroundUpdate) {
     const cached = !forceRefresh ? getOpsCache(cacheKey) : null;
     if (cached && cached.data) {
@@ -2063,12 +2080,25 @@
             });
           }
 
-          btnSave.disabled = true;
-          btnSave.textContent = 'Veröffentlicht…';
-          if (msgEl) msgEl.textContent = '';
+          const newsKey = 'news::' + session.standortId;
+          const payload = {
+            typ: selectedType,
+            bereich: bereich,
+            titel: titel,
+            inhalt: inhalt,
+            gueltigAb: gueltigAb,
+            gueltigBis: gueltigBis,
+            pinned: pinned,
+            docName: docNameEl ? docNameEl.value.trim() : '',
+            docFileName: docFileName,
+            docMimeType: docMimeType,
+            docBase64: docBase64
+          };
 
-          try {
-            const saveRes = await window.SonaApi.saveOpsNews(session.standortId, {
+          // Bei Text-Infos ohne Datei-Upload: Sofortige Optimistic UI (0 ms)
+          if (!docBase64) {
+            const optimisticEntry = {
+              id: 'TMP-NEWS-' + Date.now(),
               typ: selectedType,
               bereich: bereich,
               titel: titel,
@@ -2076,18 +2106,54 @@
               gueltigAb: gueltigAb,
               gueltigBis: gueltigBis,
               pinned: pinned,
-              docName: docNameEl ? docNameEl.value.trim() : '',
-              docFileName: docFileName,
-              docMimeType: docMimeType,
-              docBase64: docBase64
+              autor: (session.user && session.user.name) || 'Team',
+              erstelltAm: new Date().toISOString(),
+              gelesen: true,
+              readCount: 1,
+              readers: []
+            };
+            const snap = mutateOpsCache(newsKey, function(d) {
+              d.entries = Array.isArray(d.entries) ? [optimisticEntry].concat(d.entries) : [optimisticEntry];
+              return d;
             });
+            if (window.SonaApp && window.SonaApp.toast) {
+              window.SonaApp.toast('Info auf Startseite veröffentlicht.');
+            }
+            loadTagesuebersichtTab(session, false);
+            window.SonaApi.saveOpsNews(session.standortId, payload).then(function(saveRes) {
+              if (!saveRes || !saveRes.success) {
+                restoreOpsCacheSnapshot(newsKey, snap);
+                loadTagesuebersichtTab(session, false);
+                if (window.SonaApp && window.SonaApp.toast) {
+                  window.SonaApp.toast((saveRes && saveRes.error) || 'Speichern fehlgeschlagen.');
+                }
+                return;
+              }
+              fetchOpsSwr(newsKey, function() { return window.SonaApi.getOpsNewsList(session.standortId); }, true, function() {
+                const p = document.getElementById('opsTagesuebersichtPane');
+                if (p && document.body.contains(p)) loadTagesuebersichtTab(session, false);
+              });
+            }).catch(function() {
+              restoreOpsCacheSnapshot(newsKey, snap);
+              loadTagesuebersichtTab(session, false);
+              if (window.SonaApp && window.SonaApp.toast) window.SonaApp.toast('Verbindungsfehler beim Speichern.');
+            });
+            return;
+          }
+
+          btnSave.disabled = true;
+          btnSave.textContent = 'Lädt hoch…';
+          if (msgEl) msgEl.textContent = '';
+
+          try {
+            const saveRes = await window.SonaApi.saveOpsNews(session.standortId, payload);
             if (!saveRes || !saveRes.success) {
               if (msgEl) { msgEl.style.color = '#f87171'; msgEl.textContent = (saveRes && saveRes.error) || 'Speichern fehlgeschlagen.'; }
               return;
             }
-            invalidateOpsCache('news::' + session.standortId);
+            invalidateOpsCache(newsKey);
             if (window.SonaApp && window.SonaApp.toast) {
-              window.SonaApp.toast('Info auf Startseite veröffentlicht.');
+              window.SonaApp.toast('Info & Dokument veröffentlicht.');
             }
             loadTagesuebersichtTab(session, true);
           } catch (eSave) {
@@ -2100,20 +2166,26 @@
       }
 
       pane.querySelectorAll('.ops-news-del-btn').forEach(function(btn) {
-        btn.addEventListener('click', async function() {
+        btn.addEventListener('click', function() {
           const nid = btn.dataset.newsId;
           if (!nid) return;
-          btn.disabled = true;
-          try {
-            const dRes = await window.SonaApi.deleteOpsNews(session.standortId, nid);
-            if (dRes && dRes.success) {
-              invalidateOpsCache('news::' + session.standortId);
-              if (window.SonaApp && window.SonaApp.toast) window.SonaApp.toast('Eintrag entfernt.');
-              loadTagesuebersichtTab(session, true);
+          const newsKey = 'news::' + session.standortId;
+          const snap = mutateOpsCache(newsKey, function(d) {
+            d.entries = (d.entries || []).filter(function(it) { return String(it.id) !== String(nid); });
+            return d;
+          });
+          if (window.SonaApp && window.SonaApp.toast) window.SonaApp.toast('Eintrag entfernt.');
+          loadTagesuebersichtTab(session, false);
+          window.SonaApi.deleteOpsNews(session.standortId, nid).then(function(dRes) {
+            if (!dRes || !dRes.success) {
+              restoreOpsCacheSnapshot(newsKey, snap);
+              loadTagesuebersichtTab(session, false);
+              if (window.SonaApp && window.SonaApp.toast) window.SonaApp.toast((dRes && dRes.error) || 'Löschen fehlgeschlagen.');
             }
-          } finally {
-            btn.disabled = false;
-          }
+          }).catch(function() {
+            restoreOpsCacheSnapshot(newsKey, snap);
+            loadTagesuebersichtTab(session, false);
+          });
         });
       });
     }
@@ -2314,26 +2386,46 @@
         if (msgEl) { msgEl.style.color = '#f87171'; msgEl.textContent = 'Bitte Artikelnamen eingeben (mind. 2 Zeichen).'; }
         return;
       }
-      if (btn) { btn.disabled = true; btn.textContent = 'Speichert…'; }
-      if (msgEl) msgEl.textContent = '';
-      try {
-        const addRes = await window.SonaApi.addOps86Item(session.standortId, {
-          artikel: artikel,
-          bereich: berEl ? berEl.value : 'KUECHE',
-          notiz: notizEl ? notizEl.value.trim() : ''
-        });
+      const list86Key = 'list86::' + session.standortId;
+      const berVal = berEl ? berEl.value : 'KUECHE';
+      const notizVal = notizEl ? notizEl.value.trim() : '';
+      const optimistic86 = {
+        id: 'TMP-86-' + Date.now(),
+        artikel: artikel,
+        bereich: berVal,
+        notiz: notizVal,
+        gemeldetVon: (session.user && session.user.name) || 'Team',
+        erstelltAm: new Date().toISOString(),
+        bestaetigtAm: new Date().toISOString().slice(0, 10),
+        bestaetigtHeute: true
+      };
+      const snap86 = mutateOpsCache(list86Key, function(d) {
+        d.items = Array.isArray(d.items) ? [optimistic86].concat(d.items) : [optimistic86];
+        return d;
+      });
+      if (window.SonaApp && window.SonaApp.toast) window.SonaApp.toast('„' + artikel + '“ auf 86 gesetzt.');
+      load86Tab(session, false);
+
+      window.SonaApi.addOps86Item(session.standortId, {
+        artikel: artikel,
+        bereich: berVal,
+        notiz: notizVal
+      }).then(function(addRes) {
         if (!addRes || !addRes.success) {
-          if (msgEl) { msgEl.style.color = '#f87171'; msgEl.textContent = (addRes && addRes.error) || 'Eintragen fehlgeschlagen.'; }
+          restoreOpsCacheSnapshot(list86Key, snap86);
+          load86Tab(session, false);
+          if (window.SonaApp && window.SonaApp.toast) window.SonaApp.toast((addRes && addRes.error) || 'Eintragen fehlgeschlagen.');
           return;
         }
-        invalidateOpsCache('list86::' + session.standortId);
-        if (window.SonaApp && window.SonaApp.toast) window.SonaApp.toast('„' + artikel + '“ auf 86 gesetzt.');
-        load86Tab(session, true);
-      } catch (eAdd) {
-        if (msgEl) { msgEl.style.color = '#f87171'; msgEl.textContent = 'Verbindungsfehler.'; }
-      } finally {
-        if (btn) { btn.disabled = false; btn.textContent = 'Auf 86 setzen'; }
-      }
+        fetchOpsSwr(list86Key, function() { return window.SonaApi.getOps86List(session.standortId); }, true, function() {
+          const p = document.getElementById('ops86Pane');
+          if (p && document.body.contains(p)) load86Tab(session, false);
+        });
+      }).catch(function() {
+        restoreOpsCacheSnapshot(list86Key, snap86);
+        load86Tab(session, false);
+        if (window.SonaApp && window.SonaApp.toast) window.SonaApp.toast('Verbindungsfehler.');
+      });
     };
 
     const btnAdd = document.getElementById('btnAddOps86');
@@ -2346,38 +2438,52 @@
     }
 
     pane.querySelectorAll('.ops-86-confirm-btn').forEach(function(b) {
-      b.addEventListener('click', async function() {
+      b.addEventListener('click', function() {
         const id = b.dataset.id;
-        b.disabled = true;
-        b.textContent = 'Bestätigt…';
-        try {
-          const cRes = await window.SonaApi.confirmOps86Item(session.standortId, id);
-          if (cRes && cRes.success) {
-            invalidateOpsCache('list86::' + session.standortId);
-            if (window.SonaApp && window.SonaApp.toast) window.SonaApp.toast('Für heute als noch 86 bestätigt.');
-            load86Tab(session, true);
+        const list86Key = 'list86::' + session.standortId;
+        const snap = mutateOpsCache(list86Key, function(d) {
+          d.items = (d.items || []).map(function(it) {
+            if (String(it.id) === String(id)) {
+              it.bestaetigtHeute = true;
+              it.bestaetigtAm = new Date().toISOString().slice(0, 10);
+            }
+            return it;
+          });
+          return d;
+        });
+        if (window.SonaApp && window.SonaApp.toast) window.SonaApp.toast('Für heute als noch 86 bestätigt.');
+        load86Tab(session, false);
+        window.SonaApi.confirmOps86Item(session.standortId, id).then(function(cRes) {
+          if (!cRes || !cRes.success) {
+            restoreOpsCacheSnapshot(list86Key, snap);
+            load86Tab(session, false);
           }
-        } finally {
-          b.disabled = false;
-        }
+        }).catch(function() {
+          restoreOpsCacheSnapshot(list86Key, snap);
+          load86Tab(session, false);
+        });
       });
     });
 
     pane.querySelectorAll('.ops-86-resolve-btn').forEach(function(b) {
-      b.addEventListener('click', async function() {
+      b.addEventListener('click', function() {
         const id = b.dataset.id;
-        b.disabled = true;
-        b.textContent = 'Entfernt…';
-        try {
-          const rRes = await window.SonaApi.resolveOps86Item(session.standortId, id);
-          if (rRes && rRes.success) {
-            invalidateOpsCache('list86::' + session.standortId);
-            if (window.SonaApp && window.SonaApp.toast) window.SonaApp.toast('Artikel wieder verfügbar (von 86 entfernt).');
-            load86Tab(session, true);
+        const list86Key = 'list86::' + session.standortId;
+        const snap = mutateOpsCache(list86Key, function(d) {
+          d.items = (d.items || []).filter(function(it) { return String(it.id) !== String(id); });
+          return d;
+        });
+        if (window.SonaApp && window.SonaApp.toast) window.SonaApp.toast('Artikel wieder verfügbar (von 86 entfernt).');
+        load86Tab(session, false);
+        window.SonaApi.resolveOps86Item(session.standortId, id).then(function(rRes) {
+          if (!rRes || !rRes.success) {
+            restoreOpsCacheSnapshot(list86Key, snap);
+            load86Tab(session, false);
           }
-        } finally {
-          b.disabled = false;
-        }
+        }).catch(function() {
+          restoreOpsCacheSnapshot(list86Key, snap);
+          load86Tab(session, false);
+        });
       });
     });
   }
@@ -2582,60 +2688,99 @@
         if (msgEl) msgEl.textContent = '';
 
         try {
+          const fbKey = 'feedback::' + session.standortId;
           const payload = { thema: thema, titel: titel, inhalt: inhalt };
           if (isAdmin) {
             if (durVal === 'DAUERHAFT') payload.dauerhaft = true;
             else payload.durationDays = parseInt(durVal, 10) || 7;
           }
-          const sRes = await window.SonaApi.addOpsFeedback(session.standortId, payload);
-          if (!sRes || !sRes.success) {
-            if (msgEl) { msgEl.style.color = '#f87171'; msgEl.textContent = (sRes && sRes.error) || 'Speichern fehlgeschlagen.'; }
-            return;
-          }
-          invalidateOpsCache('feedback::' + session.standortId);
+          const days = payload.durationDays || 7;
+          const optimisticFb = {
+            id: 'TMP-FB-' + Date.now(),
+            thema: thema,
+            titel: titel || thema,
+            inhalt: inhalt,
+            autor: (session.user && session.user.name) || 'Team',
+            erstelltAm: new Date().toISOString(),
+            dauerhaft: !!payload.dauerhaft,
+            gueltigBis: payload.dauerhaft ? '' : new Date(Date.now() + days * 86400000).toISOString().slice(0, 10)
+          };
+          const snapFb = mutateOpsCache(fbKey, function(d) {
+            d.entries = Array.isArray(d.entries) ? [optimisticFb].concat(d.entries) : [optimisticFb];
+            return d;
+          });
           if (window.SonaApp && window.SonaApp.toast) window.SonaApp.toast('Feedback veröffentlicht.');
-          loadFeedbackTab(session, true);
-        } catch (eFb) {
-          if (msgEl) { msgEl.style.color = '#f87171'; msgEl.textContent = 'Verbindungsfehler.'; }
-        } finally {
-          btnSave.disabled = false;
-          btnSave.textContent = 'Feedback veröffentlichen';
-        }
-      });
-    }
+          loadFeedbackTab(session, false);
+
+          window.SonaApi.addOpsFeedback(session.standortId, payload).then(function(sRes) {
+            if (!sRes || !sRes.success) {
+              restoreOpsCacheSnapshot(fbKey, snapFb);
+              loadFeedbackTab(session, false);
+              if (window.SonaApp && window.SonaApp.toast) window.SonaApp.toast((sRes && sRes.error) || 'Speichern fehlgeschlagen.');
+              return;
+            }
+            fetchOpsSwr(fbKey, function() { return window.SonaApi.getOpsFeedbackList(session.standortId); }, true, function() {
+              const p = document.getElementById('opsFeedbackPane');
+              if (p && document.body.contains(p)) loadFeedbackTab(session, false);
+            });
+          }).catch(function() {
+            restoreOpsCacheSnapshot(fbKey, snapFb);
+            loadFeedbackTab(session, false);
+            if (window.SonaApp && window.SonaApp.toast) window.SonaApp.toast('Verbindungsfehler.');
+          });
+        });
+      }
 
     if (isAdmin) {
       pane.querySelectorAll('.ops-fb-ext-btn').forEach(function(b) {
-        b.addEventListener('click', async function() {
-          b.disabled = true;
-          try {
-            const opts = b.dataset.perm === '1'
-              ? { dauerhaft: true }
-              : { durationDays: parseInt(b.dataset.days, 10) || 14 };
-            const eRes = await window.SonaApi.extendOpsFeedback(session.standortId, b.dataset.id, opts);
-            if (eRes && eRes.success) {
-              invalidateOpsCache('feedback::' + session.standortId);
-              if (window.SonaApp && window.SonaApp.toast) window.SonaApp.toast('Sichtbarkeitsdauer aktualisiert.');
-              loadFeedbackTab(session, true);
+        b.addEventListener('click', function() {
+          const fbKey = 'feedback::' + session.standortId;
+          const fbId = b.dataset.id;
+          const opts = b.dataset.perm === '1'
+            ? { dauerhaft: true }
+            : { durationDays: parseInt(b.dataset.days, 10) || 14 };
+          const snap = mutateOpsCache(fbKey, function(d) {
+            d.entries = (d.entries || []).map(function(it) {
+              if (String(it.id) === String(fbId)) {
+                if (opts.dauerhaft) { it.dauerhaft = true; it.gueltigBis = ''; }
+                else { it.dauerhaft = false; it.gueltigBis = new Date(Date.now() + (opts.durationDays * 86400000)).toISOString().slice(0, 10); }
+              }
+              return it;
+            });
+            return d;
+          });
+          if (window.SonaApp && window.SonaApp.toast) window.SonaApp.toast('Sichtbarkeitsdauer aktualisiert.');
+          loadFeedbackTab(session, false);
+          window.SonaApi.extendOpsFeedback(session.standortId, fbId, opts).then(function(eRes) {
+            if (!eRes || !eRes.success) {
+              restoreOpsCacheSnapshot(fbKey, snap);
+              loadFeedbackTab(session, false);
             }
-          } finally {
-            b.disabled = false;
-          }
+          }).catch(function() {
+            restoreOpsCacheSnapshot(fbKey, snap);
+            loadFeedbackTab(session, false);
+          });
         });
       });
       pane.querySelectorAll('.ops-fb-del-btn').forEach(function(b) {
-        b.addEventListener('click', async function() {
-          b.disabled = true;
-          try {
-            const dRes = await window.SonaApi.deleteOpsFeedback(session.standortId, b.dataset.id);
-            if (dRes && dRes.success) {
-              invalidateOpsCache('feedback::' + session.standortId);
-              if (window.SonaApp && window.SonaApp.toast) window.SonaApp.toast('Feedback entfernt.');
-              loadFeedbackTab(session, true);
+        b.addEventListener('click', function() {
+          const fbKey = 'feedback::' + session.standortId;
+          const fbId = b.dataset.id;
+          const snap = mutateOpsCache(fbKey, function(d) {
+            d.entries = (d.entries || []).filter(function(it) { return String(it.id) !== String(fbId); });
+            return d;
+          });
+          if (window.SonaApp && window.SonaApp.toast) window.SonaApp.toast('Feedback entfernt.');
+          loadFeedbackTab(session, false);
+          window.SonaApi.deleteOpsFeedback(session.standortId, fbId).then(function(dRes) {
+            if (!dRes || !dRes.success) {
+              restoreOpsCacheSnapshot(fbKey, snap);
+              loadFeedbackTab(session, false);
             }
-          } finally {
-            b.disabled = false;
-          }
+          }).catch(function() {
+            restoreOpsCacheSnapshot(fbKey, snap);
+            loadFeedbackTab(session, false);
+          });
         });
       });
     }
