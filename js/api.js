@@ -380,6 +380,7 @@
     getModuleLaunchUrl: (moduleKey, standortId) => callPost('os_module_launch', {
       moduleKey: moduleKey,
       standortId: standortId
-    })
+    }),
+    getAdminSources: () => callPost('os_admin_sources', {})
   };
 })();

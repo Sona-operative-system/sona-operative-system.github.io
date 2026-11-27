@@ -490,6 +490,9 @@
     if (hasAdminTab(s, 'rundmail')) {
       adminNavItems.push({ key: 'rundmail', title: 'Rundmail', pillar: 'ADMIN' });
     }
+    if (hasAdminTab(s, 'quellen')) {
+      adminNavItems.push({ key: 'quellen', title: 'Quellen', pillar: 'ADMIN' });
+    }
     adminNavItems.forEach(it => navItems.push(it));
 
     const validNonNavView = STATE.activeView === 'mod_operations' || STATE.activeView === 'support_help';
@@ -990,7 +993,8 @@
     }
     if ((STATE.activeView === 'rbac' && hasAdminTab(s, 'rbac')) ||
         (STATE.activeView === 'audit_log' && hasAdminTab(s, 'audit_log')) ||
-        (STATE.activeView === 'rundmail' && hasAdminTab(s, 'rundmail'))) {
+        (STATE.activeView === 'rundmail' && hasAdminTab(s, 'rundmail')) ||
+        (STATE.activeView === 'quellen' && hasAdminTab(s, 'quellen'))) {
       const adminGrp = document.querySelector('#osNavList .os-nav-group[data-pillar="ADMIN"]');
       if (adminGrp) {
         adminGrp.classList.add('open');
@@ -1001,6 +1005,8 @@
         renderAuditLogView();
       } else if (STATE.activeView === 'rundmail') {
         renderRundmailView();
+      } else if (STATE.activeView === 'quellen') {
+        renderAdminSourcesView();
       } else {
         renderRbacMatrixView();
       }
@@ -1338,6 +1344,12 @@
         keywords: 'protokoll audit log historie wer eingetragen aktivitaet verlauf email',
         run: () => window.SonaApp.openView('audit_log')
       });
+      searchItems.push({
+        label: 'Quellen (Verknüpfte Google Sheets)',
+        meta: 'Admin',
+        keywords: 'quellen sheets google sheet id tabellen links datenbank ordner drive',
+        run: () => window.SonaApp.openView('quellen')
+      });
     }
 
     const searchInput = $('homeQuickSearch');
@@ -1613,6 +1625,110 @@
     $('btnReloadRbac').addEventListener('click', loadRbacTable);
     renderOtpResultBanner();
     await loadRbacTable();
+  }
+
+  async function renderAdminSourcesView() {
+    const c = $('mainContent');
+    if (!c) return;
+    c.innerHTML =
+      '<div class="card">' +
+        '<div class="card-head">' +
+          '<div>' +
+            '<div class="kicker">Administration · Datenquellen</div>' +
+            '<h3>Quellen &amp; Verknüpfte Google Sheets</h3>' +
+            '<p class="module-desc" style="margin:4px 0 0;">Direktzugriff auf alle hinterlegten Quell-Tabellen und Drive-Ordner je Ebene und Standort.</p>' +
+          '</div>' +
+          '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">' +
+            '<select id="adminSourcesLocFilter" class="input-control" style="height:32px;width:auto;min-width:160px;">' +
+              '<option value="ALL">Alle Standorte</option>' +
+              '<option value="001">Sona Karli (001)</option>' +
+              '<option value="002">Sona Prager (002)</option>' +
+              '<option value="CENTRAL">Nur Zentral</option>' +
+            '</select>' +
+            '<button type="button" class="btn btn-sm" id="btnReloadAdminSources">Aktualisieren</button>' +
+          '</div>' +
+        '</div>' +
+        '<div id="adminSourcesBody"><p class="module-desc">Lade verknüpfte Quellen …</p></div>' +
+      '</div>';
+
+    const body = $('adminSourcesBody');
+    const locSel = $('adminSourcesLocFilter');
+    let cachedGroups = [];
+
+    const draw = () => {
+      if (!body) return;
+      const fLoc = locSel ? locSel.value : 'ALL';
+      const blocks = cachedGroups.map(grp => {
+        const items = (grp.items || []).filter(it => {
+          if (fLoc === 'ALL') return true;
+          if (fLoc === 'CENTRAL') return it.standortId === 'ALL';
+          return it.standortId === fLoc || it.standortId === 'ALL';
+        });
+        if (!items.length) return '';
+        const rowsHtml = items.map(it => {
+          const shortId = it.id ? (it.id.length > 22 ? it.id.slice(0, 12) + '…' + it.id.slice(-8) : it.id) : 'Noch nicht hinterlegt';
+          const badge = it.standortId === 'ALL'
+            ? '<span class="badge">Zentral</span>'
+            : '<span class="badge">' + esc(it.standortName) + ' (' + esc(it.standortId) + ')</span>';
+          const actionHtml = it.configured && it.url
+            ? '<a class="btn btn-primary btn-sm" href="' + esc(it.url) + '" target="_blank" rel="noopener noreferrer" style="text-decoration:none;white-space:nowrap;">' +
+                (it.kind === 'folder' ? 'Ordner öffnen ↗' : 'Sheet öffnen ↗') +
+              '</a>' +
+              '<button type="button" class="btn btn-sm btn-copy-source-id" data-id="' + esc(it.id) + '" title="ID kopieren">ID</button>'
+            : '<span class="badge" style="opacity:.6;">Nicht verknüpft</span>';
+          return '<tr>' +
+            '<td><strong style="color:var(--os-champagne);">' + esc(it.title) + '</strong>' +
+              (it.subtitle ? '<div style="font-size:11.5px;color:var(--os-silk);margin-top:2px;">' + esc(it.subtitle) + '</div>' : '') +
+            '</td>' +
+            '<td>' + badge + '</td>' +
+            '<td><code style="font-size:11.5px;color:var(--os-silk);opacity:.9;">' + esc(shortId) + '</code></td>' +
+            '<td style="text-align:right;white-space:nowrap;"><div style="display:inline-flex;gap:6px;align-items:center;">' + actionHtml + '</div></td>' +
+          '</tr>';
+        }).join('');
+        return '<div style="margin-top:18px;">' +
+          '<div class="kicker" style="margin-bottom:8px;">' + esc(grp.label) + '</div>' +
+          '<div class="table-wrap"><table>' +
+            '<thead><tr><th>Quelle / Bereich</th><th>Standort</th><th>Sheet- / Ordner-ID</th><th style="text-align:right;">Zugriff</th></tr></thead>' +
+            '<tbody>' + rowsHtml + '</tbody>' +
+          '</table></div>' +
+        '</div>';
+      }).filter(Boolean).join('');
+
+      body.innerHTML = blocks || '<p class="module-desc">Keine Quellen für diesen Filter vorhanden.</p>';
+      body.querySelectorAll('.btn-copy-source-id').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const val = btn.getAttribute('data-id') || '';
+          if (!val) return;
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(val).then(() => {
+              const orig = btn.textContent;
+              btn.textContent = '✓';
+              setTimeout(() => { btn.textContent = orig; }, 1200);
+            }).catch(() => {});
+          }
+        });
+      });
+    };
+
+    const load = async () => {
+      if (body) body.innerHTML = '<p class="module-desc">Lade verknüpfte Quellen …</p>';
+      try {
+        const res = await window.SonaApi.getAdminSources();
+        if (!res || res.success === false) {
+          if (body) body.innerHTML = '<p class="module-desc">' + esc((res && res.error) || 'Quellen konnten nicht geladen werden.') + '</p>';
+          return;
+        }
+        cachedGroups = Array.isArray(res.groups) ? res.groups : [];
+        draw();
+      } catch (err) {
+        if (body) body.innerHTML = '<p class="module-desc">Fehler beim Laden: ' + esc(err && err.message ? err.message : String(err)) + '</p>';
+      }
+    };
+
+    if (locSel) locSel.addEventListener('change', draw);
+    const reloadBtn = $('btnReloadAdminSources');
+    if (reloadBtn) reloadBtn.addEventListener('click', load);
+    await load();
   }
 
   async function renderRundmailView() {
