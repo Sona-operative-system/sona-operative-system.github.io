@@ -1243,9 +1243,13 @@
 
   function buildQuickOpsUrl(rawUrl, session) {
     if (!rawUrl) return '';
+    const params = [];
     const userName = (session && session.user && session.user.name) ? String(session.user.name).trim() : '';
-    if (!userName) return rawUrl;
-    return rawUrl + (rawUrl.indexOf('?') === -1 ? '?' : '&') + 'user=' + encodeURIComponent(userName);
+    const standortId = (session && session.standortId) ? String(session.standortId).trim() : '';
+    if (userName) params.push('user=' + encodeURIComponent(userName));
+    if (standortId) params.push('standort=' + encodeURIComponent(standortId));
+    if (!params.length) return rawUrl;
+    return rawUrl + (rawUrl.indexOf('?') === -1 ? '?' : '&') + params.join('&');
   }
 
   function renderOverview() {
@@ -1283,7 +1287,7 @@
         : '') +
       (canReklamation
         ? '<button type="button" class="btn btn-sm home-quick-view-btn home-quick-kpi-btn" data-quick-view="ops_reklamation" title="Reklamation oder Beschwerde erfassen">' +
-            '<span class="home-quick-kpi-label">+ Reklamation</span>' +
+            '<span class="home-quick-kpi-label">+ Beschwerde</span>' +
           '</button>'
         : '');
 
