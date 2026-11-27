@@ -24,6 +24,7 @@
     os_ops_putzplan_day: true,
     os_ops_news_list: true,
     os_ops_86_list: true,
+    os_ops_feedback_list: true,
     os_ops_activity_log: true
   };
 
@@ -352,6 +353,21 @@
     resolveOps86Item: (standortId, itemId) => callPost('os_ops_86_resolve', {
       standortId: standortId,
       itemId: itemId
+    }),
+    getOpsFeedbackList: (standortId) => callPost('os_ops_feedback_list', {
+      standortId: standortId
+    }),
+    addOpsFeedback: (standortId, entry) => callPost('os_ops_feedback_add', {
+      standortId: standortId,
+      entry: entry || {}
+    }),
+    extendOpsFeedback: (standortId, feedbackId, opts) => callPost('os_ops_feedback_extend', Object.assign({
+      standortId: standortId,
+      feedbackId: feedbackId
+    }, opts || {})),
+    deleteOpsFeedback: (standortId, feedbackId) => callPost('os_ops_feedback_delete', {
+      standortId: standortId,
+      feedbackId: feedbackId
     }),
     getModuleLaunchUrl: (moduleKey, standortId) => callPost('os_module_launch', {
       moduleKey: moduleKey,

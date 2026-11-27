@@ -454,6 +454,9 @@
       if (hasOpTab('liste86')) {
         opsNavItems.push({ key: 'ops_86', title: '86-Liste', pillar: 'OPERATIONS' });
       }
+      if (hasOpTab('feedback')) {
+        opsNavItems.push({ key: 'ops_feedback', title: 'Feedback', pillar: 'OPERATIONS' });
+      }
     }
 
     const navItems = [
@@ -520,11 +523,66 @@
 
     $('osNavList').innerHTML = navHtml;
 
-    $('osMobileNav').innerHTML = navItems.map(item =>
-      '<button type="button" class="' + (STATE.activeView === item.key ? 'active' : '') + '" data-view="' + esc(item.key) + '">' +
-        esc(item.title) +
-      '</button>'
-    ).join('');
+    // Schlanke 5er Mobile Bottom-Bar für optimale Daumen-Bedienung + Menü-Drawer
+    const mobileQuickKeys = ['overview', 'ops_todo', 'ops_putzplan', 'ops_86'];
+    const mobileQuickLabels = { overview: 'Start', ops_todo: 'To-Do', ops_putzplan: 'Putzplan', ops_86: '86' };
+    const mobileQuickItems = mobileQuickKeys
+      .map(k => navItems.find(it => it.key === k))
+      .filter(Boolean);
+    $('osMobileNav').innerHTML =
+      mobileQuickItems.map(item =>
+        '<button type="button" class="' + (STATE.activeView === item.key ? 'active' : '') + '" data-view="' + esc(item.key) + '">' +
+          esc(mobileQuickLabels[item.key] || item.title) +
+        '</button>'
+      ).join('') +
+      '<button type="button" id="btnOpenMobileMenuDrawer" data-mobile-drawer="1">Menü</button>';
+
+    let drawerEl = document.getElementById('mobileMenuSheet');
+    if (!drawerEl) {
+      drawerEl = document.createElement('div');
+      drawerEl.id = 'mobileMenuSheet';
+      drawerEl.className = 'mobile-menu-sheet hidden';
+      document.body.appendChild(drawerEl);
+      drawerEl.addEventListener('click', ev => {
+        if (ev.target === drawerEl || ev.target.closest('[data-close-mobile-drawer]')) {
+          drawerEl.classList.add('hidden');
+          return;
+        }
+        const extBtn = ev.target.closest('button[data-ext-url]');
+        if (extBtn && extBtn.dataset.extUrl) {
+          drawerEl.classList.add('hidden');
+          window.open(extBtn.dataset.extUrl, '_blank', 'noopener,noreferrer');
+          return;
+        }
+        const vBtn = ev.target.closest('button[data-view]');
+        if (vBtn && vBtn.dataset.view) {
+          drawerEl.classList.add('hidden');
+          window.SonaApp.openView(vBtn.dataset.view);
+        }
+      });
+    }
+    drawerEl.innerHTML =
+      '<div class="mobile-menu-sheet-card">' +
+        '<div class="card-head" style="margin-bottom:8px;">' +
+          '<div><div class="kicker">Navigation</div><h3>Alle Bereiche</h3></div>' +
+          '<button type="button" class="btn btn-sm" data-close-mobile-drawer="1">Schließen</button>' +
+        '</div>' +
+        '<div class="mobile-menu-grid">' +
+          navItems.map(item =>
+            item.externalUrl
+              ? '<button type="button" class="mobile-menu-item" data-ext-url="' + esc(item.externalUrl) + '">' + esc(item.title) + ' ↗</button>'
+              : '<button type="button" class="mobile-menu-item' + (STATE.activeView === item.key ? ' active' : '') + '" data-view="' + esc(item.key) + '">' + esc(item.title) + '</button>'
+          ).join('') +
+        '</div>' +
+      '</div>';
+
+    const openDrawerBtn = document.getElementById('btnOpenMobileMenuDrawer');
+    if (openDrawerBtn) {
+      openDrawerBtn.addEventListener('click', ev => {
+        ev.stopPropagation();
+        drawerEl.classList.remove('hidden');
+      });
+    }
 
     $('sidebarUserMeta').innerHTML =
       '<div style="font-weight:600;color:var(--os-cream);font-size:13px;">' + esc(s.user.name) + '</div>' +
@@ -627,6 +685,7 @@
         if (!STATE.session || STATE.session.standortId !== session.standortId) return;
         window.SonaOperationsModule.prefetch(STATE.session, 'ops_tagesuebersicht');
         window.SonaOperationsModule.prefetch(STATE.session, 'ops_86');
+        window.SonaOperationsModule.prefetch(STATE.session, 'ops_feedback');
         if (mods.some(m => m.key === 'operations')) {
           window.SonaOperationsModule.prefetch(STATE.session, 'ops_todo');
           window.SonaOperationsModule.prefetch(STATE.session, 'ops_putzplan');
@@ -856,6 +915,9 @@
           '</button>'
         : '');
 
+    const hr = new Date().getHours();
+    const greetingPrefix = hr < 11 ? 'Guten Morgen' : (hr < 18 ? 'Guten Tag' : 'Guten Abend');
+
     const routineLinksHtml =
       (canPutzplan
         ? '<button type="button" id="homeRoutinePutzCard" class="home-routine-link home-quick-view-btn" data-quick-view="ops_putzplan">' +
@@ -865,6 +927,7 @@
               '<span id="homeRoutinePutzProgress" class="routine-mini-status"></span>' +
             '</div>' +
             '<span>→</span>' +
+            '<div class="routine-progress-track"><div class="routine-progress-fill"></div></div>' +
           '</button>'
         : '') +
       (canTodo
@@ -875,11 +938,12 @@
               '<span id="homeRoutineTodoProgress" class="routine-mini-status"></span>' +
             '</div>' +
             '<span>→</span>' +
+            '<div class="routine-progress-track"><div class="routine-progress-fill"></div></div>' +
           '</button>'
         : '');
 
     const routineSectionHtml =
-      '<section class="home-routine-card">' +
+      '<section class="home-section-card">' +
         '<div class="card-head" style="margin-bottom:2px;">' +
           '<div>' +
             '<div class="kicker">1. Tägliche Routine</div>' +
@@ -888,37 +952,51 @@
         '</div>' +
         (routineLinksHtml
           ? '<div class="home-routine-links">' + routineLinksHtml + '</div>'
-          : '<p class="module-desc" style="margin-top:8px;">Aktuell keine Routine-Links freigegeben.</p>') +
+          : '<p class="home-empty-hint">Aktuell keine Routine-Links freigegeben.</p>') +
       '</section>';
 
     const newsSectionHtml =
-      '<section class="pillar-section">' +
-        '<div class="pillar-head" style="align-items:center;">' +
+      '<section class="home-section-card">' +
+        '<div class="card-head" style="margin-bottom:4px;">' +
           '<div><div class="kicker">2. Team-Briefing &amp; Dokumente</div><h3>Was gibt\'s Neues?</h3></div>' +
           (canManageNews
-            ? '<button type="button" class="btn btn-sm home-quick-view-btn" data-quick-view="ops_tagesuebersicht">+ Info / Dokument</button>'
+            ? '<button type="button" class="btn btn-sm home-quick-view-btn" data-quick-view="ops_tagesuebersicht">+ Info</button>'
             : '') +
         '</div>' +
         '<div id="homeNewsBoardSlot"></div>' +
       '</section>';
 
     const list86SectionHtml =
-      '<section class="home-86-card">' +
+      '<section class="home-section-card home-section-86">' +
         '<div class="card-head" style="margin-bottom:4px;">' +
           '<div>' +
             '<div class="kicker">3. Aktuell nicht verfügbar</div>' +
             '<h3>86-Liste</h3>' +
           '</div>' +
           (opsMod
-            ? '<button type="button" class="btn btn-sm home-quick-view-btn" data-quick-view="ops_86">+ 86 verwalten</button>'
+            ? '<button type="button" class="btn btn-sm home-quick-view-btn" data-quick-view="ops_86">+ 86</button>'
             : '') +
         '</div>' +
         '<div id="home86BoardSlot"></div>' +
       '</section>';
 
+    const feedbackSectionHtml =
+      '<section class="home-section-card">' +
+        '<div class="card-head" style="margin-bottom:4px;">' +
+          '<div>' +
+            '<div class="kicker">4. Team-Austausch &amp; Ideen (7 Tage sichtbar)</div>' +
+            '<h3>Feedback</h3>' +
+          '</div>' +
+          (opsMod
+            ? '<button type="button" class="btn btn-sm home-quick-view-btn" data-quick-view="ops_feedback">+ Feedback geben</button>'
+            : '') +
+        '</div>' +
+        '<div id="homeFeedbackBoardSlot"></div>' +
+      '</section>';
+
     container.innerHTML =
       '<div class="os-home-greeting">' +
-        '<h2>Willkommen, ' + esc(s.user.name) + '</h2>' +
+        '<h2>' + esc(greetingPrefix) + ', ' + esc(s.user.name) + '</h2>' +
         '<div class="home-quick-toolbar">' +
           '<div class="home-search-wrap">' +
             '<input type="search" id="homeQuickSearch" class="input-control home-search-input" placeholder="Schnellsuche …" autocomplete="off">' +
@@ -929,8 +1007,11 @@
       '</div>' +
       '<div class="home-info-stack">' +
         routineSectionHtml +
-        newsSectionHtml +
-        list86SectionHtml +
+        '<div class="home-bento-grid">' +
+          newsSectionHtml +
+          list86SectionHtml +
+        '</div>' +
+        feedbackSectionHtml +
       '</div>';
 
     if (window.SonaOperationsModule) {
@@ -942,6 +1023,9 @@
       }
       if (window.SonaOperationsModule.render86BoardInto) {
         window.SonaOperationsModule.render86BoardInto($('home86BoardSlot'), s, false);
+      }
+      if (window.SonaOperationsModule.renderFeedbackBoardInto) {
+        window.SonaOperationsModule.renderFeedbackBoardInto($('homeFeedbackBoardSlot'), s, false);
       }
     }
 

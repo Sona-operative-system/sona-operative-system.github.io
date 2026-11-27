@@ -60,7 +60,7 @@
       return;
     }
     const sid = String(standortId);
-    ['summary::', 'reklam::', 'rating::', 'todo::', 'putz::', 'news::', 'list86::'].forEach(function(p) {
+    ['summary::', 'reklam::', 'rating::', 'todo::', 'putz::', 'news::', 'list86::', 'feedback::'].forEach(function(p) {
       invalidateOpsCache(p + sid);
     });
   }
@@ -1596,14 +1596,17 @@
   function applyRoutineCardState(cardEl, textEl, done, total) {
     if (!cardEl || !textEl) return;
     cardEl.classList.remove('routine-state-low', 'routine-state-mid', 'routine-state-good');
+    const barFill = cardEl.querySelector('.routine-progress-fill');
     const t = Number(total) || 0;
     const d = Number(done) || 0;
     if (t <= 0) {
       textEl.textContent = '';
+      if (barFill) barFill.style.width = '0%';
       return;
     }
-    const pct = Math.round((d / t) * 100);
+    const pct = Math.max(0, Math.min(100, Math.round((d / t) * 100)));
     textEl.textContent = 'Heute: ' + d + ' / ' + t + ' erledigt (' + pct + ' %)';
+    if (barFill) barFill.style.width = (d <= 0 ? 12 : pct) + '%';
     if (d <= 0) {
       cardEl.classList.add('routine-state-low');
     } else if (pct >= 80) {
@@ -1667,7 +1670,7 @@
   function renderNewsCardsHtml(entries, opts) {
     const o = opts || {};
     if (!entries || !entries.length) {
-      return '<div class="card"><p class="module-desc" style="margin:0;">Aktuell liegen keine neuen Meldungen oder Dokumente vor.</p></div>';
+      return '<p class="home-empty-hint">Aktuell liegen keine neuen Meldungen oder Dokumente vor.</p>';
     }
     return '<div class="home-news-grid">' +
       entries.map(function(item) {
@@ -2349,6 +2352,265 @@
     });
   }
 
+  // ============================================================================
+  // FEEDBACK & IDEEN (1 Woche sichtbar auf Startseite, Admin kann verlängern)
+  // ============================================================================
+  function renderFeedbackCardsHtml(entries) {
+    if (!entries || !entries.length) {
+      return '<p class="home-empty-hint">Aktuell kein offenes Team-Feedback aus den letzten 7 Tagen.</p>';
+    }
+    return '<div class="home-feedback-grid">' +
+      entries.map(function(item) {
+        const untilTxt = item.dauerhaft
+          ? 'Dauerhaft'
+          : ('Sichtbar bis ' + formatIsoShortDe(item.gueltigBis));
+        return '<article class="home-feedback-card">' +
+          '<div>' +
+            '<div style="display:flex;align-items:center;justify-content:space-between;gap:6px;flex-wrap:wrap;">' +
+              '<span class="badge">' + esc(item.thema || 'Allgemein') + '</span>' +
+              '<span style="font-size:11px;color:var(--os-silk);">' + esc(formatTsShortDe(item.erstelltAm)) + '</span>' +
+            '</div>' +
+            '<div class="home-feedback-title">' + esc(item.titel) + '</div>' +
+            (item.inhalt ? '<div class="home-feedback-body">' + esc(item.inhalt) + '</div>' : '') +
+          '</div>' +
+          '<div class="home-feedback-meta">' +
+            '<span>Von <b>' + esc(item.autor || 'Mitarbeiter') + '</b></span>' +
+            '<span>' + esc(untilTxt) + '</span>' +
+          '</div>' +
+        '</article>';
+      }).join('') +
+    '</div>';
+  }
+
+  async function renderFeedbackBoardInto(targetEl, session, forceRefresh) {
+    if (!targetEl || !session || !session.standortId) return;
+    const cacheKey = 'feedback::' + session.standortId;
+    if (forceRefresh || !getOpsCache(cacheKey)) {
+      targetEl.innerHTML = '<p class="home-empty-hint">Lade Feedback …</p>';
+    }
+
+    try {
+      const res = await fetchOpsSwr(
+        cacheKey,
+        function() { return window.SonaApi.getOpsFeedbackList(session.standortId); },
+        !!forceRefresh,
+        function() {
+          if (document.body.contains(targetEl)) {
+            renderFeedbackBoardInto(targetEl, session, false);
+          }
+        }
+      );
+      if (!document.body.contains(targetEl)) return;
+      if (!res || !res.success) {
+        const msg = (res && res.error) || '';
+        if (msg.indexOf('Unbekannte Aktion') !== -1) {
+          targetEl.innerHTML = '<p class="home-empty-hint">Feedback-Board wird nach dem nächsten <code>@sync</code> automatisch aktiv.</p>';
+          return;
+        }
+        targetEl.innerHTML = '<p class="home-empty-hint">Feedback konnte nicht geladen werden.</p>';
+        return;
+      }
+      targetEl.innerHTML = renderFeedbackCardsHtml(res.activeEntries || []);
+    } catch (err) {
+      if (document.body.contains(targetEl)) {
+        targetEl.innerHTML = '<p class="home-empty-hint">Aktuell keine Verbindung zum Feedback-Board.</p>';
+      }
+    }
+  }
+
+  async function loadFeedbackTab(session, forceRefresh) {
+    const pane = document.getElementById('opsTabPane');
+    if (!pane || !session) return;
+    const cacheKey = 'feedback::' + session.standortId;
+
+    if (forceRefresh || !getOpsCache(cacheKey)) {
+      pane.innerHTML =
+        '<div class="card">' +
+          '<div class="kicker">Feedback &amp; Ideen</div>' +
+          '<p class="module-desc">Lade Einträge …</p>' +
+        '</div>';
+    }
+
+    let res = null;
+    try {
+      res = await fetchOpsSwr(
+        cacheKey,
+        function() { return window.SonaApi.getOpsFeedbackList(session.standortId); },
+        !!forceRefresh,
+        function() {
+          if (document.getElementById('opsTabPane')) {
+            loadFeedbackTab(session, false);
+          }
+        }
+      );
+    } catch (err) {
+      res = { success: false, error: err && err.message ? err.message : String(err) };
+    }
+    if (!document.getElementById('opsTabPane')) return;
+
+    const backendPending = !!(res && !res.success && String(res.error || '').indexOf('Unbekannte Aktion') !== -1);
+    const isAdmin = !!(res && res.isAdmin);
+    const allEntries = (res && res.success && Array.isArray(res.allEntries)) ? res.allEntries : [];
+
+    const adminDurationHtml = isAdmin
+      ? '<div class="form-field">' +
+          '<label class="kicker" for="opsFbDuration">Sichtbarkeit auf Startseite (Admin)</label>' +
+          '<select id="opsFbDuration" class="input-control">' +
+            '<option value="7">1 Woche (Standard)</option>' +
+            '<option value="14">2 Wochen</option>' +
+            '<option value="30">1 Monat (30 Tage)</option>' +
+            '<option value="DAUERHAFT">Dauerhaft sichtbar</option>' +
+          '</select>' +
+        '</div>'
+      : '';
+
+    const rowsHtml = allEntries.length
+      ? '<div class="table-wrap"><table><thead><tr><th>Status</th><th>Thema</th><th>Feedback</th><th>Von</th><th>Sichtbar bis</th>' + (isAdmin ? '<th>Admin</th>' : '') + '</tr></thead><tbody>' +
+          allEntries.map(function(it) {
+            const statusBadge = it.isActive
+              ? '<span class="badge badge-ok">Aktiv</span>'
+              : '<span class="badge">Abgelaufen</span>';
+            const bisTxt = it.dauerhaft ? 'Dauerhaft' : formatIsoShortDe(it.gueltigBis);
+            const adminBtns = isAdmin
+              ? '<div style="display:flex;gap:5px;flex-wrap:wrap;">' +
+                  '<button type="button" class="btn btn-sm ops-fb-ext-btn" data-id="' + esc(it.id) + '" data-days="14">+2 Wo.</button>' +
+                  '<button type="button" class="btn btn-sm ops-fb-ext-btn" data-id="' + esc(it.id) + '" data-days="30">+30 T.</button>' +
+                  '<button type="button" class="btn btn-sm ops-fb-ext-btn" data-id="' + esc(it.id) + '" data-perm="1">Dauerhaft</button>' +
+                  '<button type="button" class="btn btn-danger btn-sm ops-fb-del-btn" data-id="' + esc(it.id) + '">×</button>' +
+                '</div>'
+              : '';
+            return '<tr>' +
+              '<td>' + statusBadge + '</td>' +
+              '<td><span class="badge">' + esc(it.thema || 'Allgemein') + '</span></td>' +
+              '<td><b>' + esc(it.titel) + '</b>' + (it.inhalt ? '<div style="font-size:12px;color:var(--os-silk);margin-top:2px;max-width:380px;white-space:pre-wrap;">' + esc(it.inhalt) + '</div>' : '') + '</td>' +
+              '<td style="white-space:nowrap;font-size:12px;"><b>' + esc(it.autor) + '</b><div style="font-size:11px;color:var(--os-silk);">' + esc(formatTsShortDe(it.erstelltAm)) + '</div></td>' +
+              '<td style="white-space:nowrap;font-size:12px;">' + esc(bisTxt) + '</td>' +
+              (isAdmin ? '<td style="white-space:nowrap;">' + adminBtns + '</td>' : '') +
+            '</tr>';
+          }).join('') +
+        '</tbody></table></div>'
+      : '<p class="home-empty-hint">Noch kein Feedback vorhanden.</p>';
+
+    pane.innerHTML =
+      (backendPending
+        ? '<div class="card" style="margin-bottom:16px;"><p class="module-desc" style="margin:0;">Hinweis: Das Backend für <b>Feedback</b> wartet noch auf <code>@sync</code>.</p></div>'
+        : '<div class="card" style="margin-bottom:16px;">' +
+            '<div class="card-head">' +
+              '<div><div class="kicker">Team-Feedback · 1 Woche auf Startseite sichtbar</div><h3>Feedback oder Idee eintragen</h3></div>' +
+              '<button type="button" id="btnOpsFbReload" class="btn btn-sm">Aktualisieren</button>' +
+            '</div>' +
+            '<div id="opsFbMsg" style="font-size:12.5px;margin-bottom:8px;"></div>' +
+            '<div class="user-modal-grid">' +
+              '<div class="form-field">' +
+                '<label class="kicker" for="opsFbThema">Thema / Kategorie</label>' +
+                '<select id="opsFbThema" class="input-control">' +
+                  '<option value="Veranstaltung">Veranstaltung / Event</option>' +
+                  '<option value="Verbesserung">Mögliche Verbesserung</option>' +
+                  '<option value="Service">Service / Ablauf</option>' +
+                  '<option value="Küche / Bar">Küche / Bar</option>' +
+                  '<option value="Allgemein">Allgemein</option>' +
+                '</select>' +
+              '</div>' +
+              '<div class="form-field">' +
+                '<label class="kicker" for="opsFbTitel">Kurztitel / Betreff</label>' +
+                '<input type="text" id="opsFbTitel" class="input-control" maxlength="140" placeholder="z. B. Firmenfeier Freitag, Ablauf Bar …">' +
+              '</div>' +
+              adminDurationHtml +
+            '</div>' +
+            '<div class="form-field">' +
+              '<label class="kicker" for="opsFbInhalt">Feedback / Verbesserungsvorschlag</label>' +
+              '<textarea id="opsFbInhalt" class="input-control" rows="3" maxlength="3000" placeholder="Was lief gut? Was können wir beim nächsten Mal verbessern?"></textarea>' +
+            '</div>' +
+            '<div style="display:flex;justify-content:flex-end;">' +
+              '<button type="button" id="btnSaveOpsFb" class="btn btn-primary">Feedback veröffentlichen</button>' +
+            '</div>' +
+          '</div>') +
+      '<div class="card">' +
+        '<div class="card-head"><div><div class="kicker">Übersicht</div><h3>Alle Feedback-Einträge (' + esc(allEntries.length) + ')</h3></div></div>' +
+        rowsHtml +
+      '</div>';
+
+    const reloadBtn = document.getElementById('btnOpsFbReload');
+    if (reloadBtn) reloadBtn.addEventListener('click', function() { loadFeedbackTab(session, true); });
+
+    const btnSave = document.getElementById('btnSaveOpsFb');
+    if (btnSave) {
+      btnSave.addEventListener('click', async function() {
+        const msgEl = document.getElementById('opsFbMsg');
+        const thema = (document.getElementById('opsFbThema') && document.getElementById('opsFbThema').value) || 'Allgemein';
+        const titel = (document.getElementById('opsFbTitel') && document.getElementById('opsFbTitel').value || '').trim();
+        const inhalt = (document.getElementById('opsFbInhalt') && document.getElementById('opsFbInhalt').value || '').trim();
+        const durEl = document.getElementById('opsFbDuration');
+        const durVal = durEl ? durEl.value : '7';
+
+        if (titel.length < 2 && inhalt.length < 3) {
+          if (msgEl) { msgEl.style.color = '#f87171'; msgEl.textContent = 'Bitte Titel oder Feedback-Text eingeben.'; }
+          return;
+        }
+        btnSave.disabled = true;
+        btnSave.textContent = 'Speichert…';
+        if (msgEl) msgEl.textContent = '';
+
+        try {
+          const payload = { thema: thema, titel: titel, inhalt: inhalt };
+          if (isAdmin) {
+            if (durVal === 'DAUERHAFT') payload.dauerhaft = true;
+            else payload.durationDays = parseInt(durVal, 10) || 7;
+          }
+          const sRes = await window.SonaApi.addOpsFeedback(session.standortId, payload);
+          if (!sRes || !sRes.success) {
+            if (msgEl) { msgEl.style.color = '#f87171'; msgEl.textContent = (sRes && sRes.error) || 'Speichern fehlgeschlagen.'; }
+            return;
+          }
+          invalidateOpsCache('feedback::' + session.standortId);
+          if (window.SonaApp && window.SonaApp.toast) window.SonaApp.toast('Feedback veröffentlicht.');
+          loadFeedbackTab(session, true);
+        } catch (eFb) {
+          if (msgEl) { msgEl.style.color = '#f87171'; msgEl.textContent = 'Verbindungsfehler.'; }
+        } finally {
+          btnSave.disabled = false;
+          btnSave.textContent = 'Feedback veröffentlichen';
+        }
+      });
+    }
+
+    if (isAdmin) {
+      pane.querySelectorAll('.ops-fb-ext-btn').forEach(function(b) {
+        b.addEventListener('click', async function() {
+          b.disabled = true;
+          try {
+            const opts = b.dataset.perm === '1'
+              ? { dauerhaft: true }
+              : { durationDays: parseInt(b.dataset.days, 10) || 14 };
+            const eRes = await window.SonaApi.extendOpsFeedback(session.standortId, b.dataset.id, opts);
+            if (eRes && eRes.success) {
+              invalidateOpsCache('feedback::' + session.standortId);
+              if (window.SonaApp && window.SonaApp.toast) window.SonaApp.toast('Sichtbarkeitsdauer aktualisiert.');
+              loadFeedbackTab(session, true);
+            }
+          } finally {
+            b.disabled = false;
+          }
+        });
+      });
+      pane.querySelectorAll('.ops-fb-del-btn').forEach(function(b) {
+        b.addEventListener('click', async function() {
+          b.disabled = true;
+          try {
+            const dRes = await window.SonaApi.deleteOpsFeedback(session.standortId, b.dataset.id);
+            if (dRes && dRes.success) {
+              invalidateOpsCache('feedback::' + session.standortId);
+              if (window.SonaApp && window.SonaApp.toast) window.SonaApp.toast('Feedback entfernt.');
+              loadFeedbackTab(session, true);
+            }
+          } finally {
+            b.disabled = false;
+          }
+        });
+      });
+    }
+  }
+
   function prefetch(session, sectionKey) {
     if (!session || !session.standortId) return;
     const sid = session.standortId;
@@ -2392,6 +2654,12 @@
           if (r && r.success) setOpsCache('list86::' + sid, r);
         }).catch(function() {});
       }
+    } else if (sectionKey === 'ops_feedback') {
+      if (!getOpsCache('feedback::' + sid)) {
+        window.SonaApi.getOpsFeedbackList(sid).then(function(r) {
+          if (r && r.success) setOpsCache('feedback::' + sid, r);
+        }).catch(function() {});
+      }
     }
   }
 
@@ -2402,6 +2670,7 @@
     hydrateRoutineProgress: hydrateRoutineProgress,
     renderNewsBoardInto: renderNewsBoardInto,
     render86BoardInto: render86BoardInto,
+    renderFeedbackBoardInto: renderFeedbackBoardInto,
     renderAuswertungInto: function(targetEl, session) {
       if (!targetEl || !session) return;
       loadMonthlySummary(session, false, OPS_STATE.selectedPeriod, targetEl);
@@ -2488,6 +2757,12 @@
           '<button type="button" class="home-tile" data-ops-nav="ops_86">' +
             '<div class="home-tile-head"><h4 class="home-tile-title">7. 86-Liste</h4><span class="home-tile-arrow">→</span></div>' +
             '<p class="home-tile-desc">Ausverkaufte Artikel eintragen &amp; täglich prüfen</p>' +
+          '</button>'
+        );
+        cards.push(
+          '<button type="button" class="home-tile" data-ops-nav="ops_feedback">' +
+            '<div class="home-tile-head"><h4 class="home-tile-title">8. Feedback</h4><span class="home-tile-arrow">→</span></div>' +
+            '<p class="home-tile-desc">Ideen, Veranstaltungen &amp; Verbesserungen teilen</p>' +
           '</button>'
         );
 
@@ -2586,6 +2861,12 @@
       if (activeSection === '86') {
         renderSectionWrapper('86-Liste', '86');
         load86Tab(session, false);
+        return;
+      }
+
+      if (activeSection === 'feedback') {
+        renderSectionWrapper('Feedback & Ideen', 'feedback');
+        loadFeedbackTab(session, false);
         return;
       }
 
