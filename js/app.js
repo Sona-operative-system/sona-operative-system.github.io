@@ -475,7 +475,8 @@
       .concat(opsNavItems)
       .concat(mods.filter(m => m.key !== 'operations').map(m => ({ key: 'mod_' + m.key, title: m.title, pillar: m.pillar || 'WARENWIRTSCHAFT' })));
 
-    const hasWwOrOps = mods.some(m => (m.pillar || 'WARENWIRTSCHAFT') === 'WARENWIRTSCHAFT' || m.key === 'operations');
+    const hasWwOrOps = mods.some(m => (m.pillar || 'WARENWIRTSCHAFT') === 'WARENWIRTSCHAFT') ||
+      !!(opsMod && (hasOpTab('schwund_eingabe') || hasOpTab('bruch_eingabe')));
     if (hasWwOrOps) {
       navItems.push({ key: 'ww_auswertung', title: 'Schwund & Bruch', pillar: 'WARENWIRTSCHAFT' });
     }
@@ -1262,16 +1263,21 @@
       ? perms.tabPermissions.operations
       : 'ALL';
     const opsMod = mods.find(m => m.key === 'operations');
+    const hasOpTab = id => opTabs === 'ALL' || (Array.isArray(opTabs) && opTabs.indexOf(id) !== -1);
     const schwundUrl = (opsMod && opsMod.schwundUrl) ? buildQuickOpsUrl(opsMod.schwundUrl, s) : '';
     const bruchUrl = (opsMod && opsMod.bruchUrl) ? buildQuickOpsUrl(opsMod.bruchUrl, s) : '';
-    const canSchwund = !!(schwundUrl && (opTabs === 'ALL' || (Array.isArray(opTabs) && opTabs.indexOf('schwund_eingabe') !== -1)));
-    const canBruch = !!(bruchUrl && (opTabs === 'ALL' || (Array.isArray(opTabs) && opTabs.indexOf('bruch_eingabe') !== -1)));
-    const canReklamation = !!(opsMod && (opTabs === 'ALL' || (Array.isArray(opTabs) && opTabs.indexOf('reklamation') !== -1)));
-    const canPutzplan = !!(opsMod && (opTabs === 'ALL' || (Array.isArray(opTabs) && opTabs.indexOf('putzplan') !== -1)));
-    const canTodo = !!(opsMod && (opTabs === 'ALL' || (Array.isArray(opTabs) && opTabs.indexOf('todo') !== -1)));
+    const canSchwund = !!(schwundUrl && hasOpTab('schwund_eingabe'));
+    const canBruch = !!(bruchUrl && hasOpTab('bruch_eingabe'));
+    const canReklamation = !!(opsMod && hasOpTab('reklamation'));
+    const canPutzplan = !!(opsMod && hasOpTab('putzplan'));
+    const canTodo = !!(opsMod && hasOpTab('todo'));
+    const canNews = !!(opsMod && hasOpTab('tagesuebersicht'));
+    const can86 = !!(opsMod && hasOpTab('liste86'));
+    const canFeedback = !!(opsMod && hasOpTab('feedback'));
+    const canRanking = !!(opsMod && hasOpTab('mitarbeiterbewertung'));
     const lvl = String(perms.accessLevel || '').toUpperCase();
     const role = String((s.user && s.user.role) || '').toUpperCase();
-    const canManageNews = !!(opsMod && (lvl === 'ADMIN' || lvl === 'WRITE' || perms.adminMatrix || ['ADMIN', 'FB_MANAGER', 'SERVICELEITUNG', 'SERVICECHEF', 'KUECHENCHEF', 'BARCHEF'].indexOf(role) !== -1));
+    const canManageNews = !!(canNews && (opTabs === 'ALL' ? (lvl === 'ADMIN' || lvl === 'WRITE' || perms.adminMatrix || ['ADMIN', 'FB_MANAGER', 'SERVICELEITUNG', 'SERVICECHEF', 'KUECHENCHEF', 'BARCHEF'].indexOf(role) !== -1) : hasOpTab('news_erstellen')));
 
     const quickOpsHtml =
       (canSchwund
@@ -1319,57 +1325,68 @@
           '</button>'
         : '');
 
-    const routineSectionHtml =
-      '<section class="home-section-card">' +
-        '<div class="card-head" style="margin-bottom:2px;">' +
-          '<div>' +
-            '<div class="kicker">Tägliche Routine</div>' +
-            '<h3>Routineaufgaben</h3>' +
+    const routineSectionHtml = routineLinksHtml
+      ? '<section class="home-section-card">' +
+          '<div class="card-head" style="margin-bottom:2px;">' +
+            '<div>' +
+              '<div class="kicker">Tägliche Routine</div>' +
+              '<h3>Routineaufgaben</h3>' +
+            '</div>' +
           '</div>' +
-        '</div>' +
-        (routineLinksHtml
-          ? '<div class="home-routine-links">' + routineLinksHtml + '</div>'
-          : '<p class="home-empty-hint">Aktuell keine Routine-Links freigegeben.</p>') +
-      '</section>';
+          '<div class="home-routine-links">' + routineLinksHtml + '</div>' +
+        '</section>'
+      : '';
 
-    const newsSectionHtml =
-      '<section class="home-section-card">' +
-        '<div class="card-head" style="margin-bottom:4px;">' +
-          '<div><div class="kicker">Team-Briefing &amp; Dokumente</div><h3>Was gibt\'s Neues?</h3></div>' +
-          (canManageNews
-            ? '<button type="button" class="btn btn-sm home-quick-view-btn" data-quick-view="ops_tagesuebersicht">+ Info</button>'
-            : '') +
-        '</div>' +
-        '<div id="homeNewsBoardSlot"></div>' +
-      '</section>';
-
-    const list86SectionHtml =
-      '<section class="home-section-card home-section-86">' +
-        '<div class="card-head" style="margin-bottom:4px;">' +
-          '<div>' +
-            '<div class="kicker">Aktuell nicht verfügbar</div>' +
-            '<h3>86-Liste</h3>' +
+    const newsSectionHtml = canNews
+      ? '<section class="home-section-card">' +
+          '<div class="card-head" style="margin-bottom:4px;">' +
+            '<div><div class="kicker">Team-Briefing &amp; Dokumente</div><h3>Was gibt\'s Neues?</h3></div>' +
+            (canManageNews
+              ? '<button type="button" class="btn btn-sm home-quick-view-btn" data-quick-view="ops_tagesuebersicht">+ Info</button>'
+              : '') +
           '</div>' +
-          (opsMod
-            ? '<button type="button" class="btn btn-sm home-quick-view-btn" data-quick-view="ops_86">+ 86</button>'
-            : '') +
-        '</div>' +
-        '<div id="home86BoardSlot"></div>' +
-      '</section>';
+          '<div id="homeNewsBoardSlot"></div>' +
+        '</section>'
+      : '';
 
-    const feedbackSectionHtml =
-      '<section class="home-section-card">' +
-        '<div class="card-head" style="margin-bottom:4px;">' +
-          '<div>' +
-            '<div class="kicker">Team-Austausch &amp; Ideen (7 Tage sichtbar)</div>' +
-            '<h3>Feedback</h3>' +
+    const list86SectionHtml = can86
+      ? '<section class="home-section-card home-section-86">' +
+          '<div class="card-head" style="margin-bottom:4px;">' +
+            '<div>' +
+              '<div class="kicker">Aktuell nicht verfügbar</div>' +
+              '<h3>86-Liste</h3>' +
+            '</div>' +
+            '<button type="button" class="btn btn-sm home-quick-view-btn" data-quick-view="ops_86">+ 86</button>' +
           '</div>' +
-          (opsMod
-            ? '<button type="button" class="btn btn-sm home-quick-view-btn" data-quick-view="ops_feedback">+ Feedback geben</button>'
-            : '') +
-        '</div>' +
-        '<div id="homeFeedbackBoardSlot"></div>' +
-      '</section>';
+          '<div id="home86BoardSlot"></div>' +
+        '</section>'
+      : '';
+
+    const bentoGridHtml = (newsSectionHtml || list86SectionHtml)
+      ? '<div class="home-bento-grid">' + newsSectionHtml + list86SectionHtml + '</div>'
+      : '';
+
+    const feedbackSectionHtml = canFeedback
+      ? '<section class="home-section-card">' +
+          '<div class="card-head" style="margin-bottom:4px;">' +
+            '<div>' +
+              '<div class="kicker">Team-Austausch &amp; Ideen (7 Tage sichtbar)</div>' +
+              '<h3>Feedback</h3>' +
+            '</div>' +
+            '<button type="button" class="btn btn-sm home-quick-view-btn" data-quick-view="ops_feedback">+ Feedback geben</button>' +
+          '</div>' +
+          '<div id="homeFeedbackBoardSlot"></div>' +
+        '</section>'
+      : '';
+
+    const hasAnyHomeSection = !!(routineSectionHtml || bentoGridHtml || feedbackSectionHtml);
+    const fallbackHomeHtml = !hasAnyHomeSection
+      ? '<section class="home-section-card">' +
+          '<div class="kicker">Freigegebene Bereiche</div>' +
+          '<h3 style="margin-top:4px;">Deine Übersicht</h3>' +
+          '<p class="module-desc" style="margin-top:6px;">Wähle links im Menü (bzw. unten über „Menü“) einen deiner freigegebenen Bereiche aus.</p>' +
+        '</section>'
+      : '';
 
     container.innerHTML =
       '<div class="os-home-greeting">' +
@@ -1384,24 +1401,22 @@
       '</div>' +
       '<div class="home-info-stack">' +
         routineSectionHtml +
-        '<div class="home-bento-grid">' +
-          newsSectionHtml +
-          list86SectionHtml +
-        '</div>' +
+        bentoGridHtml +
         feedbackSectionHtml +
+        fallbackHomeHtml +
       '</div>';
 
     if (window.SonaOperationsModule) {
-      if (window.SonaOperationsModule.hydrateRoutineProgress) {
+      if ((canPutzplan || canTodo) && window.SonaOperationsModule.hydrateRoutineProgress) {
         window.SonaOperationsModule.hydrateRoutineProgress(s);
       }
-      if (window.SonaOperationsModule.renderNewsBoardInto) {
+      if (canNews && window.SonaOperationsModule.renderNewsBoardInto) {
         window.SonaOperationsModule.renderNewsBoardInto($('homeNewsBoardSlot'), s, false);
       }
-      if (window.SonaOperationsModule.render86BoardInto) {
+      if (can86 && window.SonaOperationsModule.render86BoardInto) {
         window.SonaOperationsModule.render86BoardInto($('home86BoardSlot'), s, false);
       }
-      if (window.SonaOperationsModule.renderFeedbackBoardInto) {
+      if (canFeedback && window.SonaOperationsModule.renderFeedbackBoardInto) {
         window.SonaOperationsModule.renderFeedbackBoardInto($('homeFeedbackBoardSlot'), s, false);
       }
     }
@@ -1423,7 +1438,7 @@
 
     // Schnellsuche über alle freigegebenen Module, Bereiche & Aktionen
     const searchItems = [];
-    mods.forEach(m => {
+    mods.filter(m => m.key !== 'operations').forEach(m => {
       searchItems.push({
         label: m.title,
         meta: m.pillarTitle || 'Modul',
@@ -1431,6 +1446,13 @@
         run: () => window.SonaApp.openView('mod_' + m.key)
       });
     });
+    if (canNews) searchItems.push({ label: 'Tagesübersicht & Infos', meta: 'Operations', keywords: 'tagesuebersicht news info briefing dokumente', run: () => window.SonaApp.openView('ops_tagesuebersicht') });
+    if (canReklamation) searchItems.push({ label: 'Reklamation und Beschwerden', meta: 'Operations', keywords: 'reklamation beschwerde gaeste', run: () => window.SonaApp.openView('ops_reklamation') });
+    if (canTodo) searchItems.push({ label: 'To-Do-Liste', meta: 'Operations', keywords: 'todo aufgaben checkliste schicht', run: () => window.SonaApp.openView('ops_todo') });
+    if (canPutzplan) searchItems.push({ label: 'Putzplan', meta: 'Operations', keywords: 'putzplan reinigung sauberkeit', run: () => window.SonaApp.openView('ops_putzplan') });
+    if (canRanking) searchItems.push({ label: 'Mitarbeiter Ranking', meta: 'Operations', keywords: 'mitarbeiter ranking scorecard azubi bewertung', run: () => window.SonaApp.openView('ops_ranking') });
+    if (can86) searchItems.push({ label: '86-Liste', meta: 'Operations', keywords: '86 liste ausverkauft nicht verfuegbar', run: () => window.SonaApp.openView('ops_86') });
+    if (canFeedback) searchItems.push({ label: 'Feedback & Ideen', meta: 'Operations', keywords: 'feedback ideen team', run: () => window.SonaApp.openView('ops_feedback') });
     if (canSchwund) {
       searchItems.push({
         label: '+ Schwund erfassen (Neuer Tab)',
@@ -1447,19 +1469,31 @@
         run: () => window.open(bruchUrl, '_blank', 'noopener,noreferrer')
       });
     }
-    if (perms.adminMatrix) {
+    if (hasAdminTab(s, 'rbac')) {
       searchItems.push({
         label: 'Rechte-Matrix & Mitarbeiter',
         meta: 'Admin',
         keywords: 'rechte matrix mitarbeiter benutzer admin anfragen gmail passwort',
         run: () => window.SonaApp.openView('rbac')
       });
+    }
+    if (hasAdminTab(s, 'audit_log')) {
       searchItems.push({
         label: 'Aktivitätsprotokoll (Audit-Log)',
         meta: 'Admin',
         keywords: 'protokoll audit log historie wer eingetragen aktivitaet verlauf email',
         run: () => window.SonaApp.openView('audit_log')
       });
+    }
+    if (hasAdminTab(s, 'rundmail')) {
+      searchItems.push({
+        label: 'Rundmail an Mitarbeiter',
+        meta: 'Admin',
+        keywords: 'rundmail email nachricht mitarbeiter',
+        run: () => window.SonaApp.openView('rundmail')
+      });
+    }
+    if (hasAdminTab(s, 'quellen')) {
       searchItems.push({
         label: 'Quellen (Verknüpfte Google Sheets)',
         meta: 'Admin',
