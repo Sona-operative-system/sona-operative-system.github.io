@@ -548,19 +548,29 @@
 
     $('osNavList').innerHTML = navHtml;
 
-    // Schlanke 5er Mobile Bottom-Bar für optimale Daumen-Bedienung + Menü-Drawer
-    const mobileQuickKeys = ['overview', 'ops_todo', 'ops_putzplan', 'ops_86'];
-    const mobileQuickLabels = { overview: 'Start', ops_todo: 'To-Do', ops_putzplan: 'Putzplan', ops_86: '86' };
-    const mobileQuickItems = mobileQuickKeys
-      .map(k => navItems.find(it => it.key === k))
-      .filter(Boolean);
+    // Standort-Theme aktivieren (001 Karli = Dark Charcoal, 002 Prager = Izakaya Bordeaux)
+    const activeStandortId = String(s.standortId || '001');
+    document.body.dataset.standort = activeStandortId;
+    const themeMeta = document.querySelector('meta[name="theme-color"]');
+    if (themeMeta) {
+      themeMeta.setAttribute('content', activeStandortId === '002' ? '#1E0D0E' : '#000000');
+    }
+
+    // Schlanke 3er Mobile Bottom-Bar: Startseite, Menü (Accordion-Drawer), Einstellungen (Zahnrad)
+    const homeIconSvg = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 10.5L12 3l9 7.5"/><path d="M5 9.5V20h14V9.5"/></svg>';
+    const menuIconSvg = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="20" y2="18"/></svg>';
+    const gearIconSvg = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9c.26.6.85 1 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>';
+
     $('osMobileNav').innerHTML =
-      mobileQuickItems.map(item =>
-        '<button type="button" class="' + (STATE.activeView === item.key ? 'active' : '') + '" data-view="' + esc(item.key) + '">' +
-          esc(mobileQuickLabels[item.key] || item.title) +
-        '</button>'
-      ).join('') +
-      '<button type="button" id="btnOpenMobileMenuDrawer" data-mobile-drawer="1">Menü</button>';
+      '<button type="button" class="' + (STATE.activeView === 'overview' ? 'active' : '') + '" data-view="overview">' +
+        '<span class="mnav-ico">' + homeIconSvg + '</span><span>Startseite</span>' +
+      '</button>' +
+      '<button type="button" id="btnOpenMobileMenuDrawer" data-mobile-drawer="1">' +
+        '<span class="mnav-ico">' + menuIconSvg + '</span><span>Menü</span>' +
+      '</button>' +
+      '<button type="button" id="btnOpenMobileSettingsDrawer" data-mobile-settings="1">' +
+        '<span class="mnav-ico">' + gearIconSvg + '</span><span>Einstellungen</span>' +
+      '</button>';
 
     let drawerEl = document.getElementById('mobileMenuSheet');
     if (!drawerEl) {
@@ -571,6 +581,14 @@
       drawerEl.addEventListener('click', ev => {
         if (ev.target === drawerEl || ev.target.closest('[data-close-mobile-drawer]')) {
           drawerEl.classList.add('hidden');
+          return;
+        }
+        const accBtn = ev.target.closest('button[data-mobile-pillar]');
+        if (accBtn) {
+          const grp = accBtn.closest('.mobile-acc-group');
+          const wasOpen = grp && grp.classList.contains('open');
+          drawerEl.querySelectorAll('.mobile-acc-group.open').forEach(g => g.classList.remove('open'));
+          if (grp && !wasOpen) grp.classList.add('open');
           return;
         }
         const extBtn = ev.target.closest('button[data-ext-url]');
@@ -586,18 +604,102 @@
         }
       });
     }
+
+    const mobileGroups = pillarGroups.slice();
+    if (adminNavItems.length) {
+      mobileGroups.push({ id: 'ADMIN', label: 'Admin' });
+    }
+    const mobileGroupsHtml = mobileGroups.map(grp => {
+      const grpItems = navItems.filter(it => it.pillar === grp.id);
+      if (!grpItems.length) return '';
+      const hasActive = grpItems.some(it => it.key === STATE.activeView);
+      return '<div class="mobile-acc-group' + (hasActive ? ' open' : '') + '">' +
+        '<button type="button" class="mobile-acc-header" data-mobile-pillar="' + esc(grp.id) + '">' +
+          '<span>' + esc(grp.label) + '</span>' +
+          '<span class="mobile-acc-caret">▸</span>' +
+        '</button>' +
+        '<div class="mobile-acc-body">' +
+          grpItems.map(item =>
+            item.externalUrl
+              ? '<button type="button" class="mobile-menu-item" data-ext-url="' + esc(item.externalUrl) + '"><span>' + esc(item.title) + '</span><span>↗</span></button>'
+              : '<button type="button" class="mobile-menu-item' + (STATE.activeView === item.key ? ' active' : '') + '" data-view="' + esc(item.key) + '"><span>' + esc(item.title) + '</span></button>'
+          ).join('') +
+        '</div>' +
+      '</div>';
+    }).join('');
+
     drawerEl.innerHTML =
       '<div class="mobile-menu-sheet-card">' +
         '<div class="card-head" style="margin-bottom:8px;">' +
-          '<div><div class="kicker">Navigation</div><h3>Alle Bereiche</h3></div>' +
+          '<div><div class="kicker">Navigation · ' + esc(shortLocName(s.standortName)) + '</div><h3>Menü</h3></div>' +
           '<button type="button" class="btn btn-sm" data-close-mobile-drawer="1">Schließen</button>' +
         '</div>' +
-        '<div class="mobile-menu-grid">' +
-          navItems.map(item =>
-            item.externalUrl
-              ? '<button type="button" class="mobile-menu-item" data-ext-url="' + esc(item.externalUrl) + '">' + esc(item.title) + ' ↗</button>'
-              : '<button type="button" class="mobile-menu-item' + (STATE.activeView === item.key ? ' active' : '') + '" data-view="' + esc(item.key) + '">' + esc(item.title) + '</button>'
+        '<button type="button" class="mobile-menu-item' + (STATE.activeView === 'overview' ? ' active' : '') + '" data-view="overview" style="margin-bottom:8px;"><span>Startseite</span></button>' +
+        '<div class="mobile-menu-acc-list">' + mobileGroupsHtml + '</div>' +
+      '</div>';
+
+    // Mobile Einstellungen Sheet (Standortwechsel, Support & Hilfe, Passwort, Abmelden)
+    let settingsSheetEl = document.getElementById('mobileSettingsSheet');
+    if (!settingsSheetEl) {
+      settingsSheetEl = document.createElement('div');
+      settingsSheetEl.id = 'mobileSettingsSheet';
+      settingsSheetEl.className = 'mobile-menu-sheet hidden';
+      document.body.appendChild(settingsSheetEl);
+      settingsSheetEl.addEventListener('click', ev => {
+        if (ev.target === settingsSheetEl || ev.target.closest('[data-close-mobile-settings]')) {
+          settingsSheetEl.classList.add('hidden');
+          return;
+        }
+        const locBtn = ev.target.closest('button[data-mobile-loc]');
+        if (locBtn && locBtn.dataset.mobileLoc) {
+          settingsSheetEl.classList.add('hidden');
+          const sel = $('globalLocationSelect');
+          if (sel && sel.value !== locBtn.dataset.mobileLoc) {
+            sel.value = locBtn.dataset.mobileLoc;
+            sel.dispatchEvent(new Event('change'));
+          }
+          return;
+        }
+        const actBtn = ev.target.closest('button[data-mobile-setting-act]');
+        if (actBtn) {
+          const act = actBtn.dataset.mobileSettingAct;
+          settingsSheetEl.classList.add('hidden');
+          if (act === 'support') {
+            const b = $('btnOpenSupportHelp');
+            if (b) b.click();
+          } else if (act === 'pw') {
+            const b = $('btnOpenChangePw');
+            if (b) b.click();
+          } else if (act === 'logout') {
+            const b = $('btnLockLogout');
+            if (b) b.click();
+          }
+        }
+      });
+    }
+    const allowedLocsForMobile = s.locations || [{ id: s.standortId, name: s.standortName }];
+    const mobileLocSwitchHtml = allowedLocsForMobile.length > 1
+      ? '<div class="kicker" style="margin:6px 0 4px;">Standort wechseln</div>' +
+        '<div class="mobile-settings-loc-row">' +
+          allowedLocsForMobile.map(l =>
+            '<button type="button" class="mobile-menu-item' + (l.id === s.standortId ? ' active' : '') + '" data-mobile-loc="' + esc(l.id) + '">' +
+              '<span>' + esc(shortLocName(l.name)) + '</span><span style="font-size:11px;opacity:.75;">' + esc(l.id) + '</span>' +
+            '</button>'
           ).join('') +
+        '</div>'
+      : '';
+
+    settingsSheetEl.innerHTML =
+      '<div class="mobile-menu-sheet-card">' +
+        '<div class="card-head" style="margin-bottom:8px;">' +
+          '<div><div class="kicker">' + esc(s.user.role) + ' · ' + esc(shortLocName(s.standortName)) + '</div><h3>' + esc(s.user.name) + '</h3></div>' +
+          '<button type="button" class="btn btn-sm" data-close-mobile-settings="1">Schließen</button>' +
+        '</div>' +
+        mobileLocSwitchHtml +
+        '<div class="mobile-settings-stack">' +
+          '<button type="button" class="mobile-menu-item" data-mobile-setting-act="support"><span>Support &amp; Hilfe</span><span>?</span></button>' +
+          '<button type="button" class="mobile-menu-item" data-mobile-setting-act="pw"><span>Passwort ändern</span></button>' +
+          '<button type="button" class="mobile-menu-item" data-mobile-setting-act="logout" style="color:#f2b8b5;border-color:rgba(229,115,104,0.35);"><span>Abmelden</span></button>' +
         '</div>' +
       '</div>';
 
@@ -605,7 +707,16 @@
     if (openDrawerBtn) {
       openDrawerBtn.addEventListener('click', ev => {
         ev.stopPropagation();
+        settingsSheetEl.classList.add('hidden');
         drawerEl.classList.remove('hidden');
+      });
+    }
+    const openSettingsBtn = document.getElementById('btnOpenMobileSettingsDrawer');
+    if (openSettingsBtn) {
+      openSettingsBtn.addEventListener('click', ev => {
+        ev.stopPropagation();
+        drawerEl.classList.add('hidden');
+        settingsSheetEl.classList.remove('hidden');
       });
     }
 

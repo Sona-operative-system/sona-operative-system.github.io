@@ -19,6 +19,39 @@
   --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 
+/* Standort 002 (Sona Prager) – Dezentes Japanese-Izakaya-Bordeaux-Theme */
+body[data-standort="002"] {
+  --os-black: #1E0D0E;
+  --os-bg: #2C1416;
+  --os-surface: #3A1B1D;
+  --os-surface-hover: #492326;
+  --os-line: rgba(245, 236, 215, 0.20);
+  --os-line-strong: rgba(245, 236, 215, 0.36);
+}
+body[data-standort="002"] .os-sidebar,
+body[data-standort="002"] .os-period-bar,
+body[data-standort="002"] .os-mobile-nav {
+  background: var(--os-black);
+}
+body[data-standort="002"] .mobile-menu-sheet-card,
+body[data-standort="002"] .user-settings-popover,
+body[data-standort="002"] .loc-switcher-menu,
+body[data-standort="002"] .modal-card {
+  background: var(--os-bg);
+}
+body[data-standort="002"] .card,
+body[data-standort="002"] .home-section-card,
+body[data-standort="002"] .bv-kpi-card {
+  background: var(--os-surface);
+}
+body[data-standort="002"] .input-control,
+body[data-standort="002"] .home-search-input,
+body[data-standort="002"] .home-quick-kpi-btn,
+body[data-standort="002"] .home-routine-link,
+body[data-standort="002"] .mobile-acc-group {
+  background: rgba(24, 9, 10, 0.48);
+}
+
 *, *::before, *::after {
   box-sizing: border-box;
   margin: 0;
@@ -745,7 +778,7 @@ tbody tr:hover td {
   .os-shell { grid-template-columns: 1fr; }
   .os-sidebar { display: none; }
   .os-topbar { padding: 10px 14px; }
-  .os-content { padding: 14px 14px 84px; }
+  .os-content { padding: 14px 14px 96px; }
   .grid-2, .grid-4 { grid-template-columns: 1fr; }
   .os-mobile-nav {
     position: fixed;
@@ -753,31 +786,46 @@ tbody tr:hover td {
     right: 0;
     bottom: 0;
     z-index: 45;
-    display: flex;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 6px;
+    padding: 6px 8px calc(8px + env(safe-area-inset-bottom, 0px));
     background: var(--os-black);
     border-top: 1px solid var(--os-line-strong);
-    overflow-x: auto;
   }
   .os-mobile-nav button {
-    flex: 1 0 auto;
-    min-width: 78px;
-    padding: 10px 8px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    min-height: 54px;
+    padding: 8px 6px;
     border: none;
+    border-radius: 10px;
     background: transparent;
     color: var(--os-silk);
     font-family: var(--font-sans);
-    font-size: 10px;
+    font-size: 11px;
     font-weight: 600;
-    letter-spacing: 0.05em;
+    letter-spacing: 0.04em;
     text-transform: uppercase;
     cursor: pointer;
+    transition: background-color 0.15s ease, color 0.15s ease;
+  }
+  .os-mobile-nav button .mnav-ico {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    line-height: 1;
   }
   .os-mobile-nav button.active {
     background: var(--os-cream);
     color: var(--os-black);
   }
   .toast {
-    bottom: 64px;
+    bottom: 78px;
     right: 12px;
     left: 12px;
   }
@@ -2367,31 +2415,86 @@ textarea.ops-textarea {
 .mobile-menu-sheet-card {
   width: 100%;
   max-width: 520px;
-  max-height: 78vh;
+  max-height: 82vh;
   overflow-y: auto;
-  background: #0d0d0d;
-  border-top: 1px solid rgba(245, 236, 215, 0.22);
-  border-radius: 16px 16px 0 0;
-  padding: 16px 16px calc(22px + env(safe-area-inset-bottom, 0px));
+  background: var(--os-black);
+  border-top: 1px solid rgba(245, 236, 215, 0.24);
+  border-radius: 18px 18px 0 0;
+  padding: 18px 16px calc(24px + env(safe-area-inset-bottom, 0px));
 }
 
-.mobile-menu-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+.mobile-menu-acc-list {
+  display: flex;
+  flex-direction: column;
   gap: 8px;
   margin-top: 10px;
 }
 
+.mobile-acc-group {
+  border: 1px solid var(--os-line);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.025);
+  overflow: hidden;
+}
+
+.mobile-acc-header {
+  width: 100%;
+  min-height: 46px;
+  padding: 11px 14px;
+  border: none;
+  background: transparent;
+  color: var(--os-cream);
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+}
+
+.mobile-acc-group.open .mobile-acc-header {
+  border-bottom: 1px solid var(--os-line);
+  background: rgba(245, 236, 215, 0.05);
+}
+
+.mobile-acc-caret {
+  font-size: 11px;
+  color: var(--os-silk);
+  transition: transform 0.18s ease;
+}
+
+.mobile-acc-group.open .mobile-acc-caret {
+  transform: rotate(90deg);
+}
+
+.mobile-acc-body {
+  display: none;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px;
+}
+
+.mobile-acc-group.open .mobile-acc-body {
+  display: flex;
+}
+
 .mobile-menu-item {
+  width: 100%;
   min-height: 44px;
   padding: 10px 12px;
-  border-radius: 10px;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(245, 236, 215, 0.14);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(245, 236, 215, 0.12);
   color: var(--os-cream);
-  font-size: 13px;
+  font-size: 13.5px;
   text-align: left;
   cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
 }
 
 .mobile-menu-item.active {
@@ -2399,6 +2502,20 @@ textarea.ops-textarea {
   color: var(--os-black);
   border-color: var(--os-cream);
   font-weight: 600;
+}
+
+.mobile-settings-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.mobile-settings-loc-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 6px;
 }
 
 @media (max-width: 980px) {
