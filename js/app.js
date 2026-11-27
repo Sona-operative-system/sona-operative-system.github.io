@@ -1875,38 +1875,48 @@
     const isImage = String(msg.fileMime || '').indexOf('image/') === 0 && !!msg.fileUrl;
     const hasFile = !!msg.fileUrl && !isImage;
     const dateStr = msg.erstelltAm ? new Date(msg.erstelltAm).toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' }) : '';
+    const senderName = String(msg.autorName || 'Admin').trim() || 'Admin';
+    const initials = senderName.split(/\s+/).slice(0, 2).map(p => p.charAt(0).toUpperCase()).join('') || 'A';
 
     const backdrop = document.createElement('div');
     backdrop.id = 'sonaDmBlockingModal';
-    backdrop.className = 'modal-backdrop';
+    backdrop.className = 'modal-backdrop dm-backdrop';
     backdrop.style.zIndex = '2600';
     backdrop.setAttribute('role', 'alertdialog');
     backdrop.setAttribute('aria-modal', 'true');
     backdrop.innerHTML =
-      '<div class="modal-card" style="max-width:560px;max-height:88vh;overflow-y:auto;">' +
-        '<div class="card-head" style="margin-bottom:10px;">' +
-          '<div>' +
-            '<div class="kicker" style="color:var(--os-amber);">Pflicht-Mitteilung (' + (idx + 1) + ' von ' + messages.length + ')</div>' +
-            '<h3 style="margin-top:2px;">' + esc(msg.thema) + '</h3>' +
-            '<div style="font-size:11.5px;color:var(--os-silk);margin-top:2px;">Von ' + esc(msg.autorName || 'Admin') + (dateStr ? ' · ' + esc(dateStr) : '') + '</div>' +
+      '<div class="modal-card dm-card">' +
+        '<div class="dm-top-pill-row">' +
+          '<span class="dm-live-pill"><span class="dm-live-dot"></span>Direktnachricht</span>' +
+          (messages.length > 1 ? '<span class="dm-counter-pill">Nachricht ' + (idx + 1) + ' von ' + messages.length + '</span>' : '<span class="dm-counter-pill">Pflicht-Bestätigung</span>') +
+        '</div>' +
+        '<div class="dm-sender-row">' +
+          '<div class="dm-avatar">' + esc(initials) + '</div>' +
+          '<div class="dm-sender-meta">' +
+            '<span class="dm-sender-name">' + esc(senderName) + '</span>' +
+            '<span class="dm-sender-time">' + esc(dateStr || 'Gerade eben') + '</span>' +
           '</div>' +
         '</div>' +
+        '<h2 class="dm-subject">' + esc(msg.thema) + '</h2>' +
         (msg.text
-          ? '<div style="white-space:pre-wrap;line-height:1.55;font-size:13.5px;color:var(--os-cream);padding:12px;border-radius:8px;background:rgba(255,255,255,0.03);border:1px solid var(--os-line);margin-bottom:12px;">' + esc(msg.text) + '</div>'
+          ? '<div class="dm-bubble">' + esc(msg.text) + '</div>'
           : '') +
         (isImage
-          ? '<div style="margin-bottom:12px;text-align:center;">' +
-              '<img src="' + esc(msg.fileUrl) + '" alt="' + esc(msg.fileName || 'Bild') + '" style="max-width:100%;max-height:320px;border-radius:8px;border:1px solid var(--os-line);object-fit:contain;">' +
+          ? '<div class="dm-media-wrap">' +
+              '<a href="' + esc(msg.fileUrl) + '" target="_blank" rel="noopener noreferrer" title="Bild in voller Größe öffnen">' +
+                '<img src="' + esc(msg.fileUrl) + '" alt="' + esc(msg.fileName || 'Bild') + '">' +
+              '</a>' +
             '</div>'
           : '') +
         ((msg.linkUrl || hasFile)
-          ? '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;">' +
-              (msg.linkUrl ? '<a class="btn btn-sm" href="' + esc(msg.linkUrl) + '" target="_blank" rel="noopener noreferrer">Link öffnen ↗</a>' : '') +
-              (hasFile ? '<a class="btn btn-sm" href="' + esc(msg.fileUrl) + '" target="_blank" rel="noopener noreferrer">Datei öffnen: ' + esc(msg.fileName || 'Anhang') + ' ↗</a>' : '') +
+          ? '<div class="dm-attachments-row">' +
+              (msg.linkUrl ? '<a class="btn btn-sm" href="' + esc(msg.linkUrl) + '" target="_blank" rel="noopener noreferrer">🔗 Link öffnen ↗</a>' : '') +
+              (hasFile ? '<a class="btn btn-sm" href="' + esc(msg.fileUrl) + '" target="_blank" rel="noopener noreferrer">📄 ' + esc(msg.fileName || 'Datei öffnen') + ' ↗</a>' : '') +
             '</div>'
           : '') +
-        '<div style="display:flex;justify-content:flex-end;padding-top:10px;border-top:1px solid var(--os-line);">' +
-          '<button type="button" id="btnConfirmBlockingDm" class="btn btn-primary" style="width:100%;">Gelesen &amp; Bestätigt ✓</button>' +
+        '<div class="dm-footer">' +
+          '<button type="button" id="btnConfirmBlockingDm" class="btn btn-primary dm-confirm-btn">Gelesen &amp; Bestätigt ✓</button>' +
+          '<div class="dm-confirm-hint">Bitte bestätige diese Nachricht, um SONA OS weiter zu nutzen.</div>' +
         '</div>' +
       '</div>';
 
