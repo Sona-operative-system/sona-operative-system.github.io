@@ -2640,3 +2640,36 @@ textarea.ops-textarea {
   color: rgba(245, 236, 215, 0.85);
   white-space: pre-wrap;
 }
+
+/* ============================================================================
+   v37: Scrollbares Sidebar-Menü mit fixiertem User-Footer
+   ============================================================================ */
+.os-sidebar {
+  height: 100vh;
+  max-height: 100dvh;
+  position: sticky;
+  top: 0;
+  overflow: hidden;
+}
+
+.os-nav-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(245, 236, 215, 0.22) transparent;
+}
+
+.os-nav-list::-webkit-scrollbar {
+  width: 5px;
+}
+
+.os-nav-list::-webkit-scrollbar-thumb {
+  background: rgba(245, 236, 215, 0.22);
+  border-radius: 4px;
+}
+
+.sidebar-footer {
+  flex-shrink: 0;
+}

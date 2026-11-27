@@ -2777,6 +2777,11 @@
         const pillarId = groupBtn.dataset.togglePillar;
         const grpEl = groupBtn.closest('.os-nav-group');
         const nextOpen = !(grpEl && grpEl.classList.contains('open'));
+        // Akkordeon-Verhalten: alle anderen Ebenen schließen, wenn eine Ebene geöffnet wird
+        Object.keys(STATE.openPillars).forEach(k => { STATE.openPillars[k] = false; });
+        document.querySelectorAll('#osNavList .os-nav-group').forEach(el => {
+          el.classList.remove('open');
+        });
         STATE.openPillars[pillarId] = nextOpen;
         if (grpEl) grpEl.classList.toggle('open', nextOpen);
         return;
