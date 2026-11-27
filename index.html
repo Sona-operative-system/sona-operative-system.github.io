@@ -25,7 +25,7 @@
   <link rel="preconnect" href="https://script.google.com" crossorigin>
   <link rel="preconnect" href="https://script.googleusercontent.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="./css/sona-os.css?v=45">
+  <link rel="stylesheet" href="./css/sona-os.css?v=46">
 </head>
 <body>
 
@@ -340,8 +340,9 @@
           <input type="email" id="userModalEmail" class="input-control" maxlength="160" placeholder="name@gmail.com">
         </div>
         <div class="form-field">
-          <label class="kicker" for="userModalRole">Rolle</label>
-          <select id="userModalRole" class="input-control"></select>
+          <label class="kicker" for="userModalRole">Rolle (Auswahl oder freie Eingabe)</label>
+          <input type="text" id="userModalRole" list="userModalRoleList" class="input-control" maxlength="40" placeholder="z. B. Service-Mitarbeiter, Azubi">
+          <datalist id="userModalRoleList"></datalist>
         </div>
         <div class="form-field">
           <label class="kicker" for="userModalBereich">Arbeitsbereich</label>
@@ -420,14 +421,14 @@
     </div>
   </div>
 
-  <script defer src="./js/config.js?v=45"></script>
-  <script defer src="./js/loader.js?v=45"></script>
-  <script defer src="./js/api.js?v=45"></script>
-  <script defer src="./js/bestand.js?v=45"></script>
-  <script defer src="./js/controlling.js?v=45"></script>
-  <script defer src="./js/einkauf.js?v=45"></script>
-  <script defer src="./js/rezeptur.js?v=45"></script>
-  <script defer src="./js/operations.js?v=45"></script>
-  <script defer src="./js/app.js?v=45"></script>
+  <script defer src="./js/config.js?v=46"></script>
+  <script defer src="./js/loader.js?v=46"></script>
+  <script defer src="./js/api.js?v=46"></script>
+  <script defer src="./js/bestand.js?v=46"></script>
+  <script defer src="./js/controlling.js?v=46"></script>
+  <script defer src="./js/einkauf.js?v=46"></script>
+  <script defer src="./js/rezeptur.js?v=46"></script>
+  <script defer src="./js/operations.js?v=46"></script>
+  <script defer src="./js/app.js?v=46"></script>
 </body>
 </html>

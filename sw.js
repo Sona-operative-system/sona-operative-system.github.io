@@ -1,20 +1,20 @@
 'use strict';
 
-const SONA_OS_SHELL_CACHE = 'sona-os-shell-v45';
+const SONA_OS_SHELL_CACHE = 'sona-os-shell-v46';
 const SONA_OS_SHELL_ASSETS = [
   './',
   './index.html',
   './manifest.webmanifest',
-  './css/sona-os.css?v=45',
-  './js/config.js?v=45',
-  './js/loader.js?v=45',
-  './js/api.js?v=45',
-  './js/bestand.js?v=45',
-  './js/controlling.js?v=45',
-  './js/einkauf.js?v=45',
-  './js/rezeptur.js?v=45',
-  './js/operations.js?v=45',
-  './js/app.js?v=45',
+  './css/sona-os.css?v=46',
+  './js/config.js?v=46',
+  './js/loader.js?v=46',
+  './js/api.js?v=46',
+  './js/bestand.js?v=46',
+  './js/controlling.js?v=46',
+  './js/einkauf.js?v=46',
+  './js/rezeptur.js?v=46',
+  './js/operations.js?v=46',
+  './js/app.js?v=46',
   './assets/sona-logo.jpg',
   './assets/sona-logo-transparent.png',
   './assets/icon-192.png',

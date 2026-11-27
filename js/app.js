@@ -9,7 +9,7 @@
     rbacEntries: [],
     pendingRequests: [],
     rbacLocations: [],
-    allowedRoles: ['ADMIN', 'FB_MANAGER', 'KUECHENCHEF', 'BARCHEF', 'SERVICELEITUNG', 'SERVICECHEF', 'ADMIN_VIEWER', 'VIEWER'],
+    allowedRoles: ['ADMIN', 'FB_MANAGER', 'KUECHENCHEF', 'BARCHEF', 'SERVICELEITUNG', 'SERVICECHEF', 'SERVICE-MITARBEITER', 'AZUBI', 'ADMIN_VIEWER', 'VIEWER'],
     allowedBereiche: ['ALLE', 'FOOD_SUSHI', 'BEVERAGE_DESSERT', 'KUECHE', 'BAR', 'SERVICE'],
     adminNotificationEmail: 'j.helmeke97@gmail.com',
     lastOtpResult: null,
@@ -2787,9 +2787,17 @@
     $('userModalMode').value = mode || 'create';
     $('userModalId').value = (entry && entry.userId) || '';
 
-    const roleSel = $('userModalRole');
+    const roleInput = $('userModalRole');
+    const roleListEl = $('userModalRoleList');
     const bereichSel = $('userModalBereich');
-    roleSel.innerHTML = STATE.allowedRoles.map(r => '<option value="' + esc(r) + '">' + esc(r) + '</option>').join('');
+    if (roleListEl) {
+      const mergedRoles = STATE.allowedRoles.slice();
+      (STATE.rbacRows || []).forEach(r => {
+        const rr = String((r && r.role) || '').trim().toUpperCase();
+        if (rr && mergedRoles.indexOf(rr) === -1) mergedRoles.push(rr);
+      });
+      roleListEl.innerHTML = mergedRoles.map(r => '<option value="' + esc(r) + '"></option>').join('');
+    }
     bereichSel.innerHTML = STATE.allowedBereiche.map(b => '<option value="' + esc(b) + '">' + esc(b) + '</option>').join('');
 
     const statusSel = $('userModalStatus');
@@ -2806,7 +2814,7 @@
       $('userModalTitle').textContent = 'Zugang konfigurieren & freigeben';
       $('userModalName').value = entry.displayName || '';
       $('userModalEmail').value = entry.email || '';
-      roleSel.value = entry.role || 'VIEWER';
+      roleInput.value = entry.role || 'VIEWER';
       bereichSel.value = entry.bereich || 'ALLE';
       statusSel.value = 'ACTIVE';
       $('userModalDesc').value = entry.note || '';
@@ -2824,7 +2832,7 @@
       $('userModalTitle').textContent = 'Profil bearbeiten: ' + (entry.displayName || entry.userId);
       $('userModalName').value = entry.displayName || '';
       $('userModalEmail').value = entry.email || '';
-      roleSel.value = entry.role || 'VIEWER';
+      roleInput.value = entry.role || 'VIEWER';
       bereichSel.value = entry.bereich || 'ALLE';
       statusSel.value = entry.status === 'ACTIVE' ? 'ACTIVE' : 'DISABLED';
       $('userModalDesc').value = entry.note || '';
@@ -2836,7 +2844,7 @@
       $('userModalTitle').textContent = 'Neuer Mitarbeiter';
       $('userModalName').value = '';
       $('userModalEmail').value = '';
-      roleSel.value = 'VIEWER';
+      roleInput.value = 'VIEWER';
       bereichSel.value = 'ALLE';
       statusSel.value = 'ACTIVE';
       $('userModalDesc').value = '';
@@ -2900,7 +2908,7 @@
     const userId = $('userModalId').value.trim();
     const name = $('userModalName').value.trim();
     const email = $('userModalEmail').value.trim().toLowerCase();
-    const role = $('userModalRole').value;
+    const role = String($('userModalRole').value || '').trim().toUpperCase();
     const bereich = $('userModalBereich').value;
     const status = $('userModalStatus').value;
     const note = $('userModalDesc').value.trim();
@@ -2910,6 +2918,10 @@
 
     if (name.length < 2) {
       showModalErr('Bitte gültigen Namen eingeben (mind. 2 Zeichen).');
+      return;
+    }
+    if (role.length < 2 || role.length > 40) {
+      showModalErr('Bitte eine gültige Rolle eingeben (2–40 Zeichen).');
       return;
     }
     if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
