@@ -1,7 +1,7 @@
 {
-  "name": "SONA OS – Warenwirtschaft & Controlling",
+  "name": "SONA OS – Operative System",
   "short_name": "SONA OS",
-  "description": "Zentrales SONA Leipzig Ökosystem für Bestand & Warenverbrauch, Controlling, Einkauf und Rezeptur-Management.",
+  "description": "Zentrales SONA Leipzig Operative System für Team-Briefings, Operations, Warenwirtschaft und Controlling.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
