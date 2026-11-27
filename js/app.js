@@ -668,7 +668,9 @@
         if (actBtn) {
           const act = actBtn.dataset.mobileSettingAct;
           settingsSheetEl.classList.add('hidden');
-          if (act === 'support') {
+          if (act === 'install_pwa') {
+            triggerPwaInstallFlow();
+          } else if (act === 'support') {
             const b = $('btnOpenSupportHelp');
             if (b) b.click();
           } else if (act === 'pw') {
@@ -693,6 +695,11 @@
         '</div>'
       : '';
 
+    const pwaInstalledNow = isPwaStandalone();
+    const mobileInstallBtnHtml = pwaInstalledNow
+      ? '<button type="button" class="mobile-menu-item" disabled style="opacity:0.6;cursor:default;"><span>✓ Bereits als App installiert</span></button>'
+      : '<button type="button" class="mobile-menu-item" data-mobile-setting-act="install_pwa" style="border-color:rgba(245,236,215,0.34);color:var(--os-cream);"><span>App auf Gerät installieren</span><span>📲</span></button>';
+
     settingsSheetEl.innerHTML =
       '<div class="mobile-menu-sheet-card">' +
         '<div class="card-head" style="margin-bottom:8px;">' +
@@ -701,11 +708,14 @@
         '</div>' +
         mobileLocSwitchHtml +
         '<div class="mobile-settings-stack">' +
+          mobileInstallBtnHtml +
           '<button type="button" class="mobile-menu-item" data-mobile-setting-act="support"><span>Support &amp; Hilfe</span><span>?</span></button>' +
           '<button type="button" class="mobile-menu-item" data-mobile-setting-act="pw"><span>Passwort ändern</span></button>' +
           '<button type="button" class="mobile-menu-item" data-mobile-setting-act="logout" style="color:#f2b8b5;border-color:rgba(229,115,104,0.35);"><span>Abmelden</span></button>' +
         '</div>' +
       '</div>';
+
+    syncPwaInstallButtons();
 
     const openDrawerBtn = document.getElementById('btnOpenMobileMenuDrawer');
     if (openDrawerBtn) {
@@ -3780,6 +3790,13 @@
       closeUserSettings();
       window.SonaApp.openView('support_help');
     };
+    if ($('btnMenuInstallPwa')) {
+      $('btnMenuInstallPwa').addEventListener('click', () => {
+        closeUserSettings();
+        triggerPwaInstallFlow();
+      });
+    }
+    syncPwaInstallButtons();
     if ($('btnOpenSupportHelp')) $('btnOpenSupportHelp').addEventListener('click', openSupportHelp);
     if ($('btnTopSupportHelp')) $('btnTopSupportHelp').addEventListener('click', openSupportHelp);
     async function switchToLocation(targetLoc) {
@@ -3893,20 +3910,122 @@
       }
     });
 
+    syncPwaInstallButtons();
     window.addEventListener('beforeinstallprompt', ev => {
       ev.preventDefault();
       STATE.deferredInstallPrompt = ev;
-      const btn = $('btnInstallPwa');
-      if (btn) btn.classList.remove('hidden');
+      syncPwaInstallButtons();
+    });
+    window.addEventListener('appinstalled', () => {
+      STATE.deferredInstallPrompt = null;
+      syncPwaInstallButtons();
+      showToast('SONA OS wurde erfolgreich als App installiert.');
     });
 
-    $('btnInstallPwa').addEventListener('click', async () => {
-      if (!STATE.deferredInstallPrompt) return;
-      STATE.deferredInstallPrompt.prompt();
-      await STATE.deferredInstallPrompt.userChoice;
-      STATE.deferredInstallPrompt = null;
-      $('btnInstallPwa').classList.add('hidden');
-    });
+    if ($('btnInstallPwa')) {
+      $('btnInstallPwa').addEventListener('click', triggerPwaInstallFlow);
+    }
+  }
+
+  function isPwaStandalone() {
+    try {
+      return (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) ||
+        window.navigator.standalone === true ||
+        document.referrer.indexOf('android-app://') === 0;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  function isIosDevice() {
+    try {
+      const ua = navigator.userAgent || '';
+      return /iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    } catch (e) {
+      return false;
+    }
+  }
+
+  function syncPwaInstallButtons() {
+    const installed = isPwaStandalone();
+    const menuBtn = $('btnMenuInstallPwa');
+    if (menuBtn) {
+      if (installed) {
+        menuBtn.textContent = '✓ Bereits als App installiert';
+        menuBtn.disabled = true;
+        menuBtn.style.opacity = '0.6';
+      } else {
+        menuBtn.textContent = 'App auf Gerät installieren';
+        menuBtn.disabled = false;
+        menuBtn.style.opacity = '';
+      }
+    }
+    const sideBtn = $('btnInstallPwa');
+    if (sideBtn) {
+      sideBtn.classList.toggle('hidden', installed || !STATE.deferredInstallPrompt);
+    }
+  }
+
+  function showPwaInstallGuideModal(mode) {
+    const existing = document.getElementById('pwaInstallGuideModal');
+    if (existing) existing.remove();
+    const isIos = mode === 'ios';
+    const modal = document.createElement('div');
+    modal.id = 'pwaInstallGuideModal';
+    modal.className = 'modal-backdrop';
+    modal.style.zIndex = '2400';
+    modal.innerHTML =
+      '<div class="modal-card" style="max-width:440px;">' +
+        '<div class="card-head" style="margin-bottom:10px;">' +
+          '<div>' +
+            '<div class="kicker">App auf Gerät installieren</div>' +
+            '<h3>' + (isIos ? 'iPhone / iPad (Safari)' : 'Android / Tablet') + '</h3>' +
+          '</div>' +
+          '<button type="button" id="btnClosePwaGuide" class="btn btn-sm">Schließen</button>' +
+        '</div>' +
+        (isIos
+          ? '<p class="module-desc" style="margin-bottom:12px;">Apple erlaubt die Homescreen-Installation nur direkt über das Safari-Menü in 2 kurzen Schritten:</p>' +
+            '<div style="display:flex;flex-direction:column;gap:8px;margin-bottom:14px;">' +
+              '<div style="padding:10px 12px;border:1px solid var(--os-line);border-radius:8px;background:rgba(255,255,255,0.03);font-size:13px;"><strong>1.</strong> Unten (bzw. oben rechts auf dem iPad) auf das <strong>Teilen-Symbol (□↑)</strong> tippen</div>' +
+              '<div style="padding:10px 12px;border:1px solid var(--os-line);border-radius:8px;background:rgba(255,255,255,0.03);font-size:13px;"><strong>2.</strong> <strong>„Zum Home-Bildschirm“</strong> wählen und mit <strong>„Hinzufügen“</strong> bestätigen</div>' +
+            '</div>'
+          : '<p class="module-desc" style="margin-bottom:12px;">Falls der automatische Dialog gerade nicht erscheint (z. B. im Inkognito-Modus), kannst du die App direkt über das Browser-Menü hinzufügen:</p>' +
+            '<div style="display:flex;flex-direction:column;gap:8px;margin-bottom:14px;">' +
+              '<div style="padding:10px 12px;border:1px solid var(--os-line);border-radius:8px;background:rgba(255,255,255,0.03);font-size:13px;"><strong>1.</strong> Oben rechts auf das Browser-Menü <strong>(⋮)</strong> tippen</div>' +
+              '<div style="padding:10px 12px;border:1px solid var(--os-line);border-radius:8px;background:rgba(255,255,255,0.03);font-size:13px;"><strong>2.</strong> <strong>„App installieren“</strong> bzw. <strong>„Zum Startbildschirm hinzufügen“</strong> wählen</div>' +
+            '</div>') +
+        '<button type="button" id="btnOkPwaGuide" class="btn btn-primary" style="width:100%;">Verstanden</button>' +
+      '</div>';
+    document.body.appendChild(modal);
+    const closeFn = () => modal.remove();
+    modal.addEventListener('click', ev => { if (ev.target === modal) closeFn(); });
+    const cBtn = document.getElementById('btnClosePwaGuide');
+    const oBtn = document.getElementById('btnOkPwaGuide');
+    if (cBtn) cBtn.addEventListener('click', closeFn);
+    if (oBtn) oBtn.addEventListener('click', closeFn);
+  }
+
+  async function triggerPwaInstallFlow() {
+    if (isPwaStandalone()) {
+      showToast('SONA OS ist bereits als App installiert.');
+      syncPwaInstallButtons();
+      return;
+    }
+    if (STATE.deferredInstallPrompt) {
+      try {
+        STATE.deferredInstallPrompt.prompt();
+        const choice = await STATE.deferredInstallPrompt.userChoice;
+        STATE.deferredInstallPrompt = null;
+        syncPwaInstallButtons();
+        if (choice && choice.outcome === 'accepted') {
+          showToast('SONA OS wird auf deinem Homescreen installiert!');
+        }
+      } catch (e) {
+        showPwaInstallGuideModal(isIosDevice() ? 'ios' : 'android');
+      }
+      return;
+    }
+    showPwaInstallGuideModal(isIosDevice() ? 'ios' : 'android');
   }
 
   async function init() {
