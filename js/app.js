@@ -1274,20 +1274,25 @@
   async function hydrateHomeResmioToday(session) {
     const box = $('homeResmioBox');
     const valEl = $('homeResmioValue');
-    if (!box || !valEl || !session || !session.standortId || !window.SonaApi || !window.SonaApi.getOpsResmioToday) {
+    if (!box || !valEl) return;
+    if (!session || !session.standortId || !window.SonaApi || !window.SonaApi.getOpsResmioToday) {
+      valEl.textContent = 'n. v.';
+      box.title = 'Resmio: Sitzung/Standort nicht verfügbar';
       return;
     }
     const locId = String(session.standortId);
     const todayKey = new Date().toISOString().slice(0, 10);
     const cacheKey = 'sona_os_resmio_' + locId + '_' + todayKey;
+    valEl.textContent = 'lädt …';
 
     const applySummary = function(data) {
       if (!data) {
-        box.classList.add('hidden');
+        valEl.textContent = 'n. v.';
         return;
       }
       if (data.configured === false) {
-        box.classList.add('hidden');
+        valEl.textContent = 'nicht eingerichtet';
+        box.title = 'Für diesen Standort ist Resmio nicht hinterlegt.';
         return;
       }
       if (!data.success) {
@@ -1323,7 +1328,10 @@
           sessionStorage.setItem(cacheKey, JSON.stringify({ ts: Date.now(), data: res }));
         } catch (eStore) {}
       }
-    } catch (e) {}
+    } catch (e) {
+      valEl.textContent = 'n. v.';
+      box.title = 'Resmio-Abruf fehlgeschlagen: ' + String((e && e.message) || e).slice(0, 140);
+    }
   }
 
   function renderOverview() {
@@ -1404,7 +1412,7 @@
               '<div class="kicker">Tägliche Routine</div>' +
               '<h3>Routineaufgaben</h3>' +
             '</div>' +
-            '<div id="homeResmioBox" class="home-resmio-box hidden" aria-live="polite" title="Tagesaktuelle Reservierungen">' +
+            '<div id="homeResmioBox" class="home-resmio-box" aria-live="polite" title="Tagesaktuelle Reservierungen">' +
               '<span class="home-resmio-icon" aria-hidden="true">📅</span>' +
               '<div class="home-resmio-meta">' +
                 '<div class="home-resmio-label">Heute · Reservierungen</div>' +
