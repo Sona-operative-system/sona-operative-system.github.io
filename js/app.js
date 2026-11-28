@@ -1271,80 +1271,6 @@
     return rawUrl + (rawUrl.indexOf('?') === -1 ? '?' : '&') + params.join('&');
   }
 
-  async function hydrateHomeResmioToday(session) {
-    const box = $('homeResmioBox');
-    const resEl = $('homeResmioRes');
-    const guestEl = $('homeResmioGuests');
-    const noteEl = $('homeResmioNote');
-    if (!box || !resEl || !guestEl) return;
-
-    const showNote = function(text) {
-      if (!noteEl) return;
-      noteEl.textContent = text || '';
-      noteEl.classList.toggle('hidden', !text);
-    };
-    const setValues = function(res, guests) {
-      resEl.textContent = res;
-      guestEl.textContent = guests;
-    };
-
-    if (!session || !session.standortId || !window.SonaApi || !window.SonaApi.getOpsResmioToday) {
-      setValues('–', '–');
-      showNote('Standort nicht verfügbar');
-      return;
-    }
-    const locId = String(session.standortId);
-    const todayKey = new Date().toISOString().slice(0, 10);
-    const cacheKey = 'sona_os_resmio_' + locId + '_' + todayKey;
-
-    const applySummary = function(data) {
-      if (!data) {
-        setValues('–', '–');
-        showNote('Keine Verbindung');
-        return;
-      }
-      if (data.configured === false) {
-        setValues('–', '–');
-        const missing = Array.isArray(data.missing) && data.missing.length ? ' (fehlt: ' + data.missing.join(', ') + ')' : '';
-        showNote('Verbindung nicht eingerichtet' + missing);
-        return;
-      }
-      if (!data.success) {
-        setValues('–', '–');
-        showNote(data.detail || data.error || 'Keine Verbindung');
-        return;
-      }
-      setValues(String(Number(data.reservations || 0)), String(Number(data.guests || 0)));
-      showNote('');
-      box.title = 'Heute: ' + Number(data.reservations || 0) + ' Reservierungen, ' + Number(data.guests || 0) + ' Gäste';
-    };
-
-    try {
-      const cachedRaw = sessionStorage.getItem(cacheKey);
-      if (cachedRaw) {
-        const parsed = JSON.parse(cachedRaw);
-        if (parsed && parsed.ts && (Date.now() - parsed.ts < 120000) && parsed.data && parsed.data.success && parsed.data.configured) {
-          applySummary(parsed.data);
-          return;
-        }
-      }
-    } catch (e) {}
-
-    try {
-      const res = await window.SonaApi.getOpsResmioToday(locId);
-      if (STATE.session && String(STATE.session.standortId) !== locId) return;
-      applySummary(res);
-      if (res && res.success && res.configured) {
-        try {
-          sessionStorage.setItem(cacheKey, JSON.stringify({ ts: Date.now(), data: res }));
-        } catch (eStore) {}
-      }
-    } catch (e) {
-      setValues('–', '–');
-      showNote('Keine Verbindung');
-    }
-  }
-
   function renderOverview() {
     const s = STATE.session;
     const mods = s.ecosystemModules || [];
@@ -1418,18 +1344,10 @@
 
     const routineSectionHtml = routineLinksHtml
       ? '<section class="home-section-card">' +
-          '<div class="card-head home-routine-head" style="margin-bottom:2px;">' +
+          '<div class="card-head" style="margin-bottom:2px;">' +
             '<div>' +
               '<div class="kicker">Tägliche Routine</div>' +
               '<h3>Routineaufgaben</h3>' +
-            '</div>' +
-            '<div id="homeResmioBox" class="home-resmio-box" aria-live="polite" title="Tagesaktuelle Reservierungen">' +
-              '<div class="home-resmio-kicker">Reservierungen heute</div>' +
-              '<div class="home-resmio-stats">' +
-                '<div class="home-resmio-stat"><span id="homeResmioRes" class="home-resmio-num tabular">–</span><span class="home-resmio-cap">Reservierungen</span></div>' +
-                '<div class="home-resmio-stat"><span id="homeResmioGuests" class="home-resmio-num tabular">–</span><span class="home-resmio-cap">Gäste</span></div>' +
-              '</div>' +
-              '<div id="homeResmioNote" class="home-resmio-note hidden"></div>' +
             '</div>' +
           '</div>' +
           '<div class="home-routine-links">' + routineLinksHtml + '</div>' +
@@ -1508,9 +1426,6 @@
     if (window.SonaOperationsModule) {
       if ((canPutzplan || canTodo) && window.SonaOperationsModule.hydrateRoutineProgress) {
         window.SonaOperationsModule.hydrateRoutineProgress(s);
-      }
-      if (routineSectionHtml) {
-        hydrateHomeResmioToday(s);
       }
       if (canNews && window.SonaOperationsModule.renderNewsBoardInto) {
         window.SonaOperationsModule.renderNewsBoardInto($('homeNewsBoardSlot'), s, false);

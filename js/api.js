@@ -27,8 +27,7 @@
     os_ops_news_list: true,
     os_ops_86_list: true,
     os_ops_feedback_list: true,
-    os_ops_activity_log: true,
-    os_resmio_today: true
+    os_ops_activity_log: true
   };
 
   function setUnauthorizedHandler(fn) {
@@ -388,10 +387,6 @@
     getDmAdminList: () => callPost('os_dm_admin_list', {}),
     deleteDirectMessage: (dmId) => callPost('os_dm_delete', { dmId: dmId }),
     getPendingDirectMessages: () => callPost('os_dm_pending', {}),
-    confirmDirectMessage: (dmId) => callPost('os_dm_confirm', { dmId: dmId }),
-    getOpsResmioToday: (standortId, forceRefresh) => callPost('os_resmio_today', {
-      standortId: standortId,
-      forceRefresh: !!forceRefresh
-    })
+    confirmDirectMessage: (dmId) => callPost('os_dm_confirm', { dmId: dmId })
   };
 })();
